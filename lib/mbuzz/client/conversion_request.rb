@@ -3,7 +3,7 @@
 module Mbuzz
   class Client
     class ConversionRequest
-      def initialize(event_id:, visitor_id:, user_id:, conversion_type:, revenue:, currency:, is_acquisition:, inherit_acquisition:, properties:)
+      def initialize(event_id:, visitor_id:, user_id:, conversion_type:, revenue:, currency:, is_acquisition:, inherit_acquisition:, properties:, ip: nil, user_agent: nil, identifier: nil)
         @event_id = event_id
         @visitor_id = visitor_id
         @user_id = user_id
@@ -13,6 +13,9 @@ module Mbuzz
         @is_acquisition = is_acquisition
         @inherit_acquisition = inherit_acquisition
         @properties = properties
+        @ip = ip
+        @user_agent = user_agent
+        @identifier = identifier
       end
 
       def call
@@ -51,6 +54,7 @@ module Mbuzz
         base_payload
           .merge(optional_identifiers)
           .merge(optional_acquisition_fields)
+          .merge(fingerprint_fields)
       end
 
       def base_payload
@@ -75,6 +79,14 @@ module Mbuzz
         {}.tap do |h|
           h[:is_acquisition] = @is_acquisition if @is_acquisition
           h[:inherit_acquisition] = @inherit_acquisition if @inherit_acquisition
+        end
+      end
+
+      def fingerprint_fields
+        {}.tap do |h|
+          h[:ip] = @ip if @ip
+          h[:user_agent] = @user_agent if @user_agent
+          h[:identifier] = @identifier if @identifier
         end
       end
 

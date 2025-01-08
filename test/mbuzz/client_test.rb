@@ -76,7 +76,7 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
-  # Server-side session resolution tests (v1.3.0+)
+  # Server-side session resolution tests (v0.7.0+)
 
   def test_track_accepts_ip_parameter
     stub_api_success_with_event do
@@ -115,7 +115,19 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
-  def test_track_works_without_session_id_when_ip_and_user_agent_provided
+  def test_track_accepts_identifier_parameter
+    stub_api_success_with_event do
+      result = Mbuzz::Client.track(
+        visitor_id: "visitor123",
+        event_type: "page_view",
+        properties: {},
+        identifier: { email: "user@example.com" }
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_track_works_with_server_side_session_resolution
     stub_api_success_with_event do
       result = Mbuzz::Client.track(
         visitor_id: "visitor123",
@@ -123,7 +135,7 @@ class Mbuzz::ClientTest < Minitest::Test
         properties: {},
         ip: "192.168.1.100",
         user_agent: "Mozilla/5.0"
-        # No session_id - server will resolve it
+        # No session_id - server resolves it
       )
       assert result[:success]
     end
@@ -368,78 +380,51 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
-  # Session tests
+  # Conversion with fingerprint fallback (v0.7.0+)
 
-  def test_session_returns_true_on_success
-    stub_api_success do
-      result = Mbuzz::Client.session(
-        visitor_id: "visitor123",
-        session_id: "session456",
-        url: "https://example.com/landing?utm_source=google"
+  def test_conversion_accepts_ip_parameter
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        ip: "192.168.1.100"
       )
-      assert_equal true, result
+      assert result[:success]
     end
   end
 
-  def test_session_returns_false_on_failure
-    stub_api_failure do
-      result = Mbuzz::Client.session(
-        visitor_id: "visitor123",
-        session_id: "session456",
-        url: "https://example.com/landing"
+  def test_conversion_accepts_user_agent_parameter
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        user_agent: "Mozilla/5.0"
       )
-      assert_equal false, result
+      assert result[:success]
     end
   end
 
-  def test_session_requires_visitor_id
-    result = Mbuzz::Client.session(
-      visitor_id: nil,
-      session_id: "session456",
-      url: "https://example.com/landing"
-    )
-    assert_equal false, result
-  end
-
-  def test_session_requires_session_id
-    result = Mbuzz::Client.session(
-      visitor_id: "visitor123",
-      session_id: nil,
-      url: "https://example.com/landing"
-    )
-    assert_equal false, result
-  end
-
-  def test_session_requires_url
-    result = Mbuzz::Client.session(
-      visitor_id: "visitor123",
-      session_id: "session456",
-      url: nil
-    )
-    assert_equal false, result
-  end
-
-  def test_session_accepts_referrer
-    stub_api_success do
-      result = Mbuzz::Client.session(
-        visitor_id: "visitor123",
-        session_id: "session456",
-        url: "https://example.com/landing",
-        referrer: "https://google.com/search"
+  def test_conversion_accepts_identifier_parameter
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        identifier: { email: "user@example.com" }
       )
-      assert_equal true, result
+      assert result[:success]
     end
   end
 
-  def test_session_accepts_started_at
-    stub_api_success do
-      result = Mbuzz::Client.session(
-        visitor_id: "visitor123",
-        session_id: "session456",
-        url: "https://example.com/landing",
-        started_at: "2025-11-28T10:30:00Z"
+  def test_conversion_with_all_fingerprint_params
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        ip: "192.168.1.100",
+        user_agent: "Mozilla/5.0",
+        identifier: { email: "user@example.com" }
       )
-      assert_equal true, result
+      assert result[:success]
     end
   end
 

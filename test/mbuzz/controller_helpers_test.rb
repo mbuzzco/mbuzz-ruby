@@ -54,11 +54,6 @@ class Mbuzz::ControllerHelpersTest < Minitest::Test
     assert_equal "visitor789", @controller.mbuzz_visitor_id
   end
 
-  def test_mbuzz_session_id_returns_session_id_from_env
-    @controller.set_session_id("session123abc")
-    assert_equal "session123abc", @controller.mbuzz_session_id
-  end
-
   private
 
   def stub_client_track
@@ -91,10 +86,6 @@ class Mbuzz::ControllerHelpersTest < Minitest::Test
 
     def set_visitor_id(visitor_id)
       @request.env[Mbuzz::ENV_VISITOR_ID_KEY] = visitor_id
-    end
-
-    def set_session_id(session_id)
-      @request.env[Mbuzz::ENV_SESSION_ID_KEY] = session_id
     end
   end
 

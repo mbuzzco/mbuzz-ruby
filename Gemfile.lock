@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    mbuzz (0.6.8)
+    mbuzz (0.7.0)
       rack (>= 2.0)
 
 GEM

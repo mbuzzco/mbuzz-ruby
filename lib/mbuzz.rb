@@ -3,7 +3,6 @@
 require_relative "mbuzz/version"
 require_relative "mbuzz/configuration"
 require_relative "mbuzz/visitor/identifier"
-require_relative "mbuzz/session/id_generator"
 require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
 require_relative "mbuzz/client"
@@ -18,20 +17,15 @@ module Mbuzz
   EVENTS_PATH = "/events"
   IDENTIFY_PATH = "/identify"
   CONVERSIONS_PATH = "/conversions"
-  SESSIONS_PATH = "/sessions"
 
   VISITOR_COOKIE_NAME = "_mbuzz_vid"
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
 
-  SESSION_COOKIE_NAME = "_mbuzz_sid"
-  SESSION_COOKIE_MAX_AGE = 30 * 60 # 30 minutes
-
   SESSION_USER_ID_KEY = "user_id"
   ENV_USER_ID_KEY = "mbuzz.user_id"
   ENV_VISITOR_ID_KEY = "mbuzz.visitor_id"
-  ENV_SESSION_ID_KEY = "mbuzz.session_id"
 
   # ============================================================================
   # Configuration
@@ -81,10 +75,6 @@ module Mbuzz
     RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
   end
 
-  def self.session_id
-    RequestContext.current&.request&.env&.dig(ENV_SESSION_ID_KEY)
-  end
-
   # ============================================================================
   # 4-Call Model API
   # ============================================================================
@@ -93,20 +83,24 @@ module Mbuzz
   #
   # @param event_type [String] The name of the event
   # @param properties [Hash] Custom event properties (url, referrer auto-added)
+  # @param identifier [Hash, nil] Optional identifier for cross-device identity resolution
   # @return [Hash, false] Result hash on success, false on failure
   #
   # @example
   #   Mbuzz.event("add_to_cart", product_id: "SKU-123", price: 49.99)
   #
-  def self.event(event_type, **properties)
+  # @example With identifier for cross-device tracking
+  #   Mbuzz.event("page_view", identifier: { email: "user@example.com" })
+  #
+  def self.event(event_type, identifier: nil, **properties)
     Client.track(
       visitor_id: visitor_id,
-      session_id: session_id,
       user_id: user_id,
       event_type: event_type,
       properties: enriched_properties(properties),
       ip: current_ip,
-      user_agent: current_user_agent
+      user_agent: current_user_agent,
+      identifier: identifier
     )
   end
 
@@ -123,6 +117,7 @@ module Mbuzz
   # @param user_id [String, nil] User ID for acquisition-linked conversions
   # @param is_acquisition [Boolean] Mark this as the acquisition conversion for this user
   # @param inherit_acquisition [Boolean] Inherit attribution from user's acquisition conversion
+  # @param identifier [Hash, nil] Optional identifier for cross-device identity resolution
   # @param properties [Hash] Custom properties
   # @return [Hash, false] Result hash on success, false on failure
   #
@@ -135,7 +130,10 @@ module Mbuzz
   # @example Recurring revenue (inherits attribution from acquisition)
   #   Mbuzz.conversion("payment", user_id: "user_123", revenue: 49.00, inherit_acquisition: true)
   #
-  def self.conversion(conversion_type, revenue: nil, user_id: nil, is_acquisition: false, inherit_acquisition: false, **properties)
+  # @example With identifier for cross-device tracking
+  #   Mbuzz.conversion("purchase", identifier: { email: "user@example.com" })
+  #
+  def self.conversion(conversion_type, revenue: nil, user_id: nil, is_acquisition: false, inherit_acquisition: false, identifier: nil, **properties)
     Client.conversion(
       visitor_id: visitor_id,
       user_id: user_id,
@@ -143,7 +141,10 @@ module Mbuzz
       revenue: revenue,
       is_acquisition: is_acquisition,
       inherit_acquisition: inherit_acquisition,
-      properties: enriched_properties(properties)
+      properties: enriched_properties(properties),
+      ip: current_ip,
+      user_agent: current_user_agent,
+      identifier: identifier
     )
   end
 

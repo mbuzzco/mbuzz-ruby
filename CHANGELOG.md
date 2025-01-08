@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-01-09
+
+### Breaking Changes
+
+- **Session cookie removed** - SDK no longer sets or reads `_mbuzz_sid` cookie
+- **Session ID generation removed** - Server handles all session resolution
+- **`Mbuzz.session_id` removed** - Use server-side session resolution instead
+- **`Mbuzz::Client.session()` removed** - Sessions are created server-side
+- **`session_id` parameter removed from `Client.track()`** - Not needed with server-side resolution
+
+### Added
+
+- **Cross-device identity resolution** - New `identifier` parameter for linking sessions across devices
+  - `Mbuzz.event("page_view", identifier: { email: "user@example.com" })`
+  - `Mbuzz.conversion("purchase", identifier: { email: "user@example.com" })`
+- **Conversion fingerprint fallback** - `ip` and `user_agent` parameters on `Client.conversion()`
+  - When visitor_id is not found, server can find visitor via recent session with same fingerprint
+
+### Changed
+
+- **Simplified middleware** - Only manages visitor cookie (`_mbuzz_vid`), no session handling
+- **Server-side session resolution** - All session creation and resolution happens on the API server
+  - Enables true 30-minute sliding windows (vs fixed time buckets)
+  - Eliminates duplicate visitor problem from concurrent Turbo/Hotwire requests
+  - Better cross-device tracking with identity resolution
+
+### Migration Guide
+
+1. Remove any code that reads `Mbuzz.session_id` or `_mbuzz_sid` cookie
+2. Remove any calls to `Mbuzz::Client.session()`
+3. Ensure `ip` and `user_agent` are passed to track/conversion calls (handled automatically if using middleware)
+4. Optionally add `identifier` parameter for cross-device tracking
+
 ## [0.6.8] - 2025-12-30
 
 ### Added
