@@ -7,6 +7,7 @@ require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
 require_relative "mbuzz/client"
 require_relative "mbuzz/middleware/tracking"
+require_relative "mbuzz/controller_helpers"
 
 module Mbuzz
   class Error < StandardError; end
