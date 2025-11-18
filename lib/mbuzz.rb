@@ -9,6 +9,8 @@ require_relative "mbuzz/client"
 require_relative "mbuzz/middleware/tracking"
 require_relative "mbuzz/controller_helpers"
 
+require_relative "mbuzz/railtie" if defined?(Rails::Railtie)
+
 module Mbuzz
   class Error < StandardError; end
 
