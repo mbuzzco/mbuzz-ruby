@@ -72,28 +72,85 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  # Validation tests - ensuring invalid input doesn't crash the app
+  def test_track_returns_false_with_nil_event
+    @event = nil
+    assert_equal false, track_result
+  end
+
+  def test_track_returns_false_with_empty_event
+    @event = ""
+    assert_equal false, track_result
+  end
+
+  def test_track_returns_false_with_whitespace_event
+    @event = "   "
+    assert_equal false, track_result
+  end
+
+  def test_track_returns_false_with_invalid_properties
+    @properties = "not a hash"
+    assert_equal false, track_result
+  end
+
+  def test_track_returns_false_without_user_or_visitor_id
+    @user_id = nil
+    @visitor_id = nil
+    assert_equal false, track_result
+  end
+
+  def test_identify_returns_false_with_nil_user_id
+    @user_id = nil
+    assert_equal false, identify_result
+  end
+
+  def test_identify_returns_false_with_invalid_traits
+    @traits = "not a hash"
+    assert_equal false, identify_result
+  end
+
+  def test_alias_returns_false_with_nil_user_id
+    @user_id = nil
+    assert_equal false, alias_result
+  end
+
+  def test_alias_returns_false_with_nil_visitor_id
+    @visitor_id = nil
+    assert_equal false, alias_result
+  end
+
+  def test_alias_returns_false_with_empty_visitor_id
+    @visitor_id = ""
+    assert_equal false, alias_result
+  end
+
+  def test_alias_returns_false_with_invalid_visitor_id_type
+    @visitor_id = 456
+    assert_equal false, alias_result
+  end
+
   private
 
   def track_result
-    @track_result ||= Mbuzz::Client.track(
-      user_id: @user_id || 123,
+    Mbuzz::Client.track(
+      user_id: @user_id.nil? ? 123 : @user_id,
       visitor_id: @visitor_id,
       event: @event || "Signup",
-      properties: @properties
+      properties: @properties || {}
     )
   end
 
   def identify_result
-    @identify_result ||= Mbuzz::Client.identify(
-      user_id: @user_id || 123,
+    Mbuzz::Client.identify(
+      user_id: @user_id.nil? ? 123 : @user_id,
       traits: @traits || {}
     )
   end
 
   def alias_result
-    @alias_result ||= Mbuzz::Client.alias(
-      user_id: @user_id || 123,
-      visitor_id: @visitor_id || "visitor123"
+    Mbuzz::Client.alias(
+      user_id: @user_id.nil? ? 123 : @user_id,
+      visitor_id: @visitor_id.nil? ? "visitor123" : @visitor_id
     )
   end
 

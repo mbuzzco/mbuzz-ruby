@@ -3,6 +3,7 @@
 require "net/http"
 require "json"
 require "uri"
+require "openssl"
 
 module Mbuzz
   class Api
@@ -29,7 +30,10 @@ module Mbuzz
     def self.http_client(path)
       uri = URI.join(config.api_url, path)
       Net::HTTP.new(uri.host, uri.port).tap do |http|
-        http.use_ssl = uri.scheme == "https"
+        if uri.scheme == "https"
+          http.use_ssl = true
+          http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+        end
         http.open_timeout = config.timeout
         http.read_timeout = config.timeout
       end

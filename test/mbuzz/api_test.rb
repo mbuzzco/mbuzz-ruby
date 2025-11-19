@@ -75,6 +75,7 @@ class Mbuzz::ApiTest < Minitest::Test
   def stub_http_timeout
     mock_http = Object.new
     def mock_http.use_ssl=(_); end
+    def mock_http.verify_mode=(_); end
     def mock_http.open_timeout=(_); end
     def mock_http.read_timeout=(_); end
     def mock_http.request(_)
@@ -92,6 +93,7 @@ class Mbuzz::ApiTest < Minitest::Test
     end
 
     def use_ssl=(_); end
+    def verify_mode=(_); end
     def open_timeout=(_); end
     def read_timeout=(_); end
 
