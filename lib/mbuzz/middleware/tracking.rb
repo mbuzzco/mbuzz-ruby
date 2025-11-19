@@ -18,9 +18,9 @@ module Mbuzz
         env[ENV_USER_ID_KEY] = user_id
 
         RequestContext.with_context(request: request) do
-          app.call(env).tap do |status, headers, body|
-            set_visitor_cookie(headers)
-          end
+          status, headers, body = app.call(env)
+          set_visitor_cookie(headers)
+          [status, headers, body]
         end
       end
 
@@ -43,7 +43,18 @@ module Mbuzz
       end
 
       def set_visitor_cookie(headers)
-        headers["Set-Cookie"] = "#{VISITOR_COOKIE_NAME}=#{visitor_id}; Path=#{VISITOR_COOKIE_PATH}; Max-Age=#{VISITOR_COOKIE_MAX_AGE}; HttpOnly; SameSite=#{VISITOR_COOKIE_SAME_SITE}"
+        cookie_options = {
+          value: visitor_id,
+          path: VISITOR_COOKIE_PATH,
+          max_age: VISITOR_COOKIE_MAX_AGE,
+          httponly: true,
+          same_site: VISITOR_COOKIE_SAME_SITE
+        }
+
+        # Add Secure flag for HTTPS requests
+        cookie_options[:secure] = true if request.ssl?
+
+        Rack::Utils.set_cookie_header!(headers, VISITOR_COOKIE_NAME, cookie_options)
       end
     end
   end

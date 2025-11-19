@@ -22,7 +22,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
   end
 
   def test_calls_next_middleware
-    status, headers, body = call_result
+    status, _headers, body = call_result
     assert_equal 200, status
     assert_equal ["OK"], body
   end
@@ -46,19 +46,19 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
   end
 
   def test_generates_visitor_id_when_missing
-    status, headers, body = call_result
+    _status, headers, _body = call_result
 
-    cookie_header = headers["Set-Cookie"]
+    cookie_header = headers["set-cookie"]
     refute_nil cookie_header
-    assert_match /mbuzz_visitor_id=/, cookie_header
+    assert_match(/mbuzz_visitor_id=/, cookie_header)
   end
 
   def test_preserves_existing_visitor_id
     @existing_visitor_id = "existing123"
-    status, headers, body = call_result
+    _status, headers, _body = call_result
 
-    cookie_header = headers["Set-Cookie"]
-    assert_match /mbuzz_visitor_id=existing123/, cookie_header
+    cookie_header = headers["set-cookie"]
+    assert_match(/mbuzz_visitor_id=existing123/, cookie_header)
   end
 
   def test_extracts_user_id_from_session
