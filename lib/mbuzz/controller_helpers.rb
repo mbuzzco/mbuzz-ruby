@@ -2,11 +2,11 @@
 
 module Mbuzz
   module ControllerHelpers
-    def mbuzz_track(event, properties: {})
+    def mbuzz_track(event_type, properties: {})
       Client.track(
         user_id: mbuzz_user_id,
         visitor_id: mbuzz_visitor_id,
-        event: event,
+        event_type: event_type,
         properties: properties
       )
     end
