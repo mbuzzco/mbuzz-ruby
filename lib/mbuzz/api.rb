@@ -43,8 +43,9 @@ module Mbuzz
     def self.ssl_cert_store
       OpenSSL::X509::Store.new.tap do |store|
         store.set_default_paths
-        # Disable CRL checking - Let's Encrypt uses OCSP, not CRL
-        store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK_ALL & 0
+        # Don't set any CRL flags - Let's Encrypt uses OCSP, not CRL
+        # Default flags (0) means no CRL checking
+        store.flags = 0
       end
     end
     private_class_method :http_client
