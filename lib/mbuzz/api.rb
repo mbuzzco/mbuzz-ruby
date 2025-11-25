@@ -33,12 +33,22 @@ module Mbuzz
         if uri.scheme == "https"
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+          http.cert_store = ssl_cert_store
         end
         http.open_timeout = config.timeout
         http.read_timeout = config.timeout
       end
     end
+
+    def self.ssl_cert_store
+      OpenSSL::X509::Store.new.tap do |store|
+        store.set_default_paths
+        # Disable CRL checking - Let's Encrypt uses OCSP, not CRL
+        store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK_ALL & 0
+      end
+    end
     private_class_method :http_client
+    private_class_method :ssl_cert_store
 
     def self.build_request(path, payload)
       uri = URI.join(config.api_url, path)
