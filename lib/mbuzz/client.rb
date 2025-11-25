@@ -7,13 +7,15 @@ module Mbuzz
       return false unless valid_properties?(properties)
       return false unless valid_identifier?(user_id, visitor_id)
 
-      Api.post(EVENTS_PATH, {
+      event = {
         user_id: user_id,
         visitor_id: visitor_id,
         event_type: event_type,
         properties: properties,
         timestamp: Time.now.utc.iso8601
-      }.compact)
+      }.compact
+
+      Api.post(EVENTS_PATH, { events: [event] })
     end
 
     def self.identify(user_id:, traits: {})
