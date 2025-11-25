@@ -2,17 +2,17 @@
 
 module Mbuzz
   class Client
-    def self.track(user_id: nil, visitor_id: nil, event:, properties: {})
-      return false unless valid_event?(event)
+    def self.track(user_id: nil, visitor_id: nil, event_type:, properties: {})
+      return false unless valid_event_type?(event_type)
       return false unless valid_properties?(properties)
       return false unless valid_identifier?(user_id, visitor_id)
 
       Api.post(EVENTS_PATH, {
         user_id: user_id,
         visitor_id: visitor_id,
-        event: event,
+        event_type: event_type,
         properties: properties,
-        timestamp: Time.now.to_i
+        timestamp: Time.now.utc.iso8601
       }.compact)
     end
 
@@ -23,7 +23,7 @@ module Mbuzz
       Api.post(IDENTIFY_PATH, {
         user_id: user_id,
         traits: traits,
-        timestamp: Time.now.to_i
+        timestamp: Time.now.utc.iso8601
       })
     end
 
@@ -34,13 +34,13 @@ module Mbuzz
       Api.post(ALIAS_PATH, {
         user_id: user_id,
         visitor_id: visitor_id,
-        timestamp: Time.now.to_i
+        timestamp: Time.now.utc.iso8601
       })
     end
 
-    private_class_method def self.valid_event?(event)
-      return false if event.nil?
-      return false if event.to_s.strip.empty?
+    private_class_method def self.valid_event_type?(event_type)
+      return false if event_type.nil?
+      return false if event_type.to_s.strip.empty?
       true
     end
 

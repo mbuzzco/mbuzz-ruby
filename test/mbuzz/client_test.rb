@@ -73,18 +73,18 @@ class Mbuzz::ClientTest < Minitest::Test
   end
 
   # Validation tests - ensuring invalid input doesn't crash the app
-  def test_track_returns_false_with_nil_event
-    @event = nil
+  def test_track_returns_false_with_nil_event_type
+    @event_type = nil
     assert_equal false, track_result
   end
 
-  def test_track_returns_false_with_empty_event
-    @event = ""
+  def test_track_returns_false_with_empty_event_type
+    @event_type = ""
     assert_equal false, track_result
   end
 
-  def test_track_returns_false_with_whitespace_event
-    @event = "   "
+  def test_track_returns_false_with_whitespace_event_type
+    @event_type = "   "
     assert_equal false, track_result
   end
 
@@ -133,24 +133,24 @@ class Mbuzz::ClientTest < Minitest::Test
 
   def track_result
     Mbuzz::Client.track(
-      user_id: @user_id.nil? ? 123 : @user_id,
+      user_id: defined?(@user_id) ? @user_id : 123,
       visitor_id: @visitor_id,
-      event: @event || "Signup",
+      event_type: defined?(@event_type) ? @event_type : "Signup",
       properties: @properties || {}
     )
   end
 
   def identify_result
     Mbuzz::Client.identify(
-      user_id: @user_id.nil? ? 123 : @user_id,
+      user_id: defined?(@user_id) ? @user_id : 123,
       traits: @traits || {}
     )
   end
 
   def alias_result
     Mbuzz::Client.alias(
-      user_id: @user_id.nil? ? 123 : @user_id,
-      visitor_id: @visitor_id.nil? ? "visitor123" : @visitor_id
+      user_id: defined?(@user_id) ? @user_id : 123,
+      visitor_id: defined?(@visitor_id) ? @visitor_id : "visitor123"
     )
   end
 
