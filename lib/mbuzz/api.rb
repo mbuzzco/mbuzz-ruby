@@ -27,10 +27,19 @@ module Mbuzz
     end
     private_class_method :enabled_and_configured?
 
+    def self.uri(path)
+      @uri_cache ||= {}
+      @uri_cache[path] ||= begin
+        base = config.api_url.chomp("/")
+        endpoint = path.start_with?("/") ? path : "/#{path}"
+        URI.parse("#{base}#{endpoint}")
+      end
+    end
+    private_class_method :uri
+
     def self.http_client(path)
-      uri = URI.join(config.api_url, path)
-      Net::HTTP.new(uri.host, uri.port).tap do |http|
-        if uri.scheme == "https"
+      Net::HTTP.new(uri(path).host, uri(path).port).tap do |http|
+        if uri(path).scheme == "https"
           http.use_ssl = true
           http.verify_mode = OpenSSL::SSL::VERIFY_PEER
           http.cert_store = ssl_cert_store
@@ -39,21 +48,19 @@ module Mbuzz
         http.read_timeout = config.timeout
       end
     end
+    private_class_method :http_client
 
     def self.ssl_cert_store
-      OpenSSL::X509::Store.new.tap do |store|
+      @ssl_cert_store ||= OpenSSL::X509::Store.new.tap do |store|
         store.set_default_paths
         # Don't set any CRL flags - Let's Encrypt uses OCSP, not CRL
-        # Default flags (0) means no CRL checking
         store.flags = 0
       end
     end
-    private_class_method :http_client
     private_class_method :ssl_cert_store
 
     def self.build_request(path, payload)
-      uri = URI.join(config.api_url, path)
-      Net::HTTP::Post.new(uri.path).tap do |request|
+      Net::HTTP::Post.new(uri(path).path).tap do |request|
         request["Authorization"] = "Bearer #{config.api_key}"
         request["Content-Type"] = "application/json"
         request["User-Agent"] = "mbuzz-ruby/#{VERSION}"
