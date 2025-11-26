@@ -58,10 +58,65 @@ class Mbuzz::ApiTest < Minitest::Test
     end
   end
 
+  # post_with_response tests
+  def test_post_with_response_returns_nil_when_gem_is_disabled
+    Mbuzz.config.enabled = false
+    result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+    assert_nil result
+  end
+
+  def test_post_with_response_returns_parsed_json_on_success
+    response_body = { "accepted" => 1, "events" => [{ "id" => "evt_abc123" }] }
+    stub_http_success_with_body(response_body) do
+      result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+      assert_equal response_body, result
+    end
+  end
+
+  def test_post_with_response_returns_nil_on_4xx_response
+    stub_http_error(400) do
+      result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+      assert_nil result
+    end
+  end
+
+  def test_post_with_response_returns_nil_on_5xx_response
+    stub_http_error(500) do
+      result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+      assert_nil result
+    end
+  end
+
+  def test_post_with_response_returns_nil_on_network_error
+    stub_http_timeout do
+      result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+      assert_nil result
+    end
+  end
+
+  def test_post_with_response_returns_nil_on_json_parse_error
+    stub_http_success_with_invalid_json do
+      result = Mbuzz::Api.post_with_response("/events", { test: "data" })
+      assert_nil result
+    end
+  end
+
   private
 
   def stub_http_success
     Net::HTTP.stub(:new, MockHTTP.new(200)) do
+      yield
+    end
+  end
+
+  def stub_http_success_with_body(body)
+    Net::HTTP.stub(:new, MockHTTP.new(200, JSON.generate(body))) do
+      yield
+    end
+  end
+
+  def stub_http_success_with_invalid_json
+    Net::HTTP.stub(:new, MockHTTP.new(200, "not json")) do
       yield
     end
   end
@@ -76,6 +131,7 @@ class Mbuzz::ApiTest < Minitest::Test
     mock_http = Object.new
     def mock_http.use_ssl=(_); end
     def mock_http.verify_mode=(_); end
+    def mock_http.cert_store=(_); end
     def mock_http.open_timeout=(_); end
     def mock_http.read_timeout=(_); end
     def mock_http.request(_)
@@ -88,26 +144,28 @@ class Mbuzz::ApiTest < Minitest::Test
   end
 
   class MockHTTP
-    def initialize(response_code)
+    def initialize(response_code, body = "{}")
       @response_code = response_code
+      @body = body
     end
 
     def use_ssl=(_); end
     def verify_mode=(_); end
+    def cert_store=(_); end
     def open_timeout=(_); end
     def read_timeout=(_); end
 
     def request(_)
-      MockResponse.new(@response_code)
+      MockResponse.new(@response_code, @body)
     end
   end
 
   class MockResponse
     attr_reader :code, :body
 
-    def initialize(code)
+    def initialize(code, body = "{}")
       @code = code.to_s
-      @body = "{}"
+      @body = body
     end
   end
 end

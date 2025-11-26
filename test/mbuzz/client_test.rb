@@ -17,10 +17,15 @@ class Mbuzz::ClientTest < Minitest::Test
     Mbuzz.instance_variable_set(:@config, @original_config)
   end
 
-  # Track tests
-  def test_track_returns_true_on_success
-    stub_api_success do
-      assert_equal true, track_result
+  # Track tests - v1.1 returns hash with event_id on success
+  def test_track_returns_event_id_on_success
+    stub_api_success_with_event do
+      result = track_result
+      assert result[:success]
+      assert_equal "evt_abc123def456", result[:event_id]
+      assert_equal "page_view", result[:event_type]
+      assert_equal "visitor_hash", result[:visitor_id]
+      assert_equal "sess_xyz789", result[:session_id]
     end
   end
 
@@ -30,19 +35,44 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  def test_track_returns_false_when_api_returns_no_events
+    stub_api_success_with_response({ "accepted" => 0, "events" => [] }) do
+      assert_equal false, track_result
+    end
+  end
+
+  def test_track_returns_false_when_api_returns_nil_events
+    stub_api_success_with_response({ "accepted" => 0 }) do
+      assert_equal false, track_result
+    end
+  end
+
   def test_track_works_with_user_id
     @user_id = 123
     @visitor_id = nil
-    stub_api_success do
-      assert_equal true, track_result
+    stub_api_success_with_event do
+      result = track_result
+      assert result[:success]
     end
   end
 
   def test_track_works_with_visitor_id
     @user_id = nil
     @visitor_id = "visitor123"
-    stub_api_success do
-      assert_equal true, track_result
+    stub_api_success_with_event do
+      result = track_result
+      assert result[:success]
+    end
+  end
+
+  def test_track_still_truthy_for_boolean_checks
+    stub_api_success_with_event do
+      result = track_result
+      # Backwards compatibility: result is truthy (hash)
+      assert result
+      if result
+        assert true, "Boolean check still works"
+      end
     end
   end
 
@@ -160,8 +190,33 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  def stub_api_success_with_event
+    response = {
+      "accepted" => 1,
+      "rejected" => [],
+      "events" => [
+        {
+          "id" => "evt_abc123def456",
+          "event_type" => "page_view",
+          "visitor_id" => "visitor_hash",
+          "session_id" => "sess_xyz789",
+          "status" => "accepted"
+        }
+      ]
+    }
+    Mbuzz::Api.stub(:post_with_response, response) do
+      yield
+    end
+  end
+
+  def stub_api_success_with_response(response)
+    Mbuzz::Api.stub(:post_with_response, response) do
+      yield
+    end
+  end
+
   def stub_api_failure
-    Mbuzz::Api.stub(:post, false) do
+    Mbuzz::Api.stub(:post_with_response, nil) do
       yield
     end
   end
