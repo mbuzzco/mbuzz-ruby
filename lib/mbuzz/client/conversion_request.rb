@@ -29,7 +29,7 @@ module Mbuzz
       end
 
       def conversion_id
-        @conversion_id ||= response&.dig("id")
+        @conversion_id ||= response&.dig("conversion", "id")
       end
 
       def attribution

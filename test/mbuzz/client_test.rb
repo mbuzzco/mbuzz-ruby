@@ -370,18 +370,19 @@ class Mbuzz::ClientTest < Minitest::Test
 
   def stub_conversion_success
     response = {
-      "id" => "conv_xyz789",
-      "visitor_id" => "vis_abc123",
-      "conversion_type" => "purchase",
-      "revenue" => "99.0",
-      "converted_at" => "2025-11-26T10:30:00Z",
+      "conversion" => {
+        "id" => "conv_xyz789",
+        "visitor_id" => "vis_abc123",
+        "conversion_type" => "purchase",
+        "revenue" => "99.0",
+        "converted_at" => "2025-11-26T10:30:00Z",
+        "journey_sessions" => 3
+      },
       "attribution" => {
-        "lookback_days" => 30,
-        "sessions_analyzed" => 3,
+        "status" => "calculated",
         "models" => {
           "first_touch" => [
             {
-              "session_id" => "sess_111",
               "channel" => "organic_search",
               "credit" => 1.0,
               "revenue_credit" => "99.0"
@@ -389,7 +390,6 @@ class Mbuzz::ClientTest < Minitest::Test
           ],
           "last_touch" => [
             {
-              "session_id" => "sess_333",
               "channel" => "email",
               "credit" => 1.0,
               "revenue_credit" => "99.0"
@@ -397,19 +397,16 @@ class Mbuzz::ClientTest < Minitest::Test
           ],
           "linear" => [
             {
-              "session_id" => "sess_111",
               "channel" => "organic_search",
               "credit" => 0.333,
               "revenue_credit" => "33.0"
             },
             {
-              "session_id" => "sess_222",
               "channel" => "paid_social",
               "credit" => 0.333,
               "revenue_credit" => "33.0"
             },
             {
-              "session_id" => "sess_333",
               "channel" => "email",
               "credit" => 0.334,
               "revenue_credit" => "33.0"
