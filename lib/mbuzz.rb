@@ -17,6 +17,7 @@ module Mbuzz
   EVENTS_PATH = "/events"
   IDENTIFY_PATH = "/identify"
   ALIAS_PATH = "/alias"
+  CONVERSIONS_PATH = "/conversions"
 
   VISITOR_COOKIE_NAME = "mbuzz_visitor_id"
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years

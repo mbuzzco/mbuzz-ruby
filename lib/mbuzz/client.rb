@@ -1,85 +1,26 @@
 # frozen_string_literal: true
 
+require_relative "client/track_request"
+require_relative "client/identify_request"
+require_relative "client/alias_request"
+require_relative "client/conversion_request"
+
 module Mbuzz
   class Client
     def self.track(user_id: nil, visitor_id: nil, event_type:, properties: {})
-      return false unless valid_event_type?(event_type)
-      return false unless valid_properties?(properties)
-      return false unless valid_identifier?(user_id, visitor_id)
-
-      event = {
-        user_id: user_id,
-        visitor_id: visitor_id,
-        event_type: event_type,
-        properties: properties,
-        timestamp: Time.now.utc.iso8601
-      }.compact
-
-      response = Api.post_with_response(EVENTS_PATH, { events: [event] })
-      return false unless response
-
-      event_data = response["events"]&.first
-      return false unless event_data
-
-      {
-        success: true,
-        event_id: event_data["id"],
-        event_type: event_data["event_type"],
-        visitor_id: event_data["visitor_id"],
-        session_id: event_data["session_id"]
-      }
+      TrackRequest.new(user_id, visitor_id, event_type, properties).call
     end
 
     def self.identify(user_id:, traits: {})
-      return false unless valid_user_id?(user_id)
-      return false unless valid_traits?(traits)
-
-      Api.post(IDENTIFY_PATH, {
-        user_id: user_id,
-        traits: traits,
-        timestamp: Time.now.utc.iso8601
-      })
+      IdentifyRequest.new(user_id, traits).call
     end
 
     def self.alias(user_id:, visitor_id:)
-      return false unless valid_user_id?(user_id)
-      return false unless valid_visitor_id?(visitor_id)
-
-      Api.post(ALIAS_PATH, {
-        user_id: user_id,
-        visitor_id: visitor_id,
-        timestamp: Time.now.utc.iso8601
-      })
+      AliasRequest.new(user_id, visitor_id).call
     end
 
-    private_class_method def self.valid_event_type?(event_type)
-      return false if event_type.nil?
-      return false if event_type.to_s.strip.empty?
-      true
-    end
-
-    private_class_method def self.valid_properties?(properties)
-      properties.is_a?(Hash)
-    end
-
-    private_class_method def self.valid_traits?(traits)
-      traits.is_a?(Hash)
-    end
-
-    private_class_method def self.valid_user_id?(user_id)
-      return false if user_id.nil?
-      user_id.is_a?(String) || user_id.is_a?(Numeric)
-    end
-
-    private_class_method def self.valid_visitor_id?(visitor_id)
-      return false if visitor_id.nil?
-      return false unless visitor_id.is_a?(String)
-      return false if visitor_id.strip.empty?
-      true
-    end
-
-    private_class_method def self.valid_identifier?(user_id, visitor_id)
-      user_id || visitor_id
+    def self.conversion(visitor_id:, conversion_type:, revenue: nil, currency: "USD", properties: {}, event_id: nil)
+      ConversionRequest.new(visitor_id, conversion_type, revenue, currency, properties, event_id).call
     end
   end
 end
