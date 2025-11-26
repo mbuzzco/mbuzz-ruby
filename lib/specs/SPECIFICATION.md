@@ -172,9 +172,24 @@ Track events (page views, conversions, custom events).
 - `properties` - Hash of event metadata (optional)
 - `timestamp` - When event occurred (optional, defaults to now)
 
-**Returns**: `true` on success, `false` on failure
+**Returns**:
+- Success: `{ success: true, event_id: "evt_abc123" }`
+- Failure: `false`
 
-**Backend Processing**: Events sent to `POST https://mbuzz.co/api/v1/events`, validated, enriched, and processed asynchronously via `Events::ProcessingJob`.
+**Example**:
+```ruby
+result = Mbuzz::Client.track(
+  visitor_id: "abc123",
+  event_type: "page_view",
+  properties: { url: "https://example.com" }
+)
+
+if result[:success]
+  puts "Event tracked: #{result[:event_id]}"
+end
+```
+
+**Backend Processing**: Events sent to `POST https://mbuzz.co/api/v1/events`, validated, enriched, and processed synchronously. Returns event ID with `evt_` prefix.
 
 #### Mbuzz.identify
 
@@ -229,13 +244,14 @@ Orchestrates tracking calls.
 - Build event payloads
 - Delegate HTTP calls to `Mbuzz::Api`
 - Handle all errors gracefully
-- Return boolean success/failure
+- Return result hash on success, `false` on failure
 - Log failures in debug mode
 
 **Public Methods**:
-- `track(...)` - Track an event
-- `identify(...)` - Identify a user
-- `alias(...)` - Link visitor to user
+- `track(...)` - Track an event, returns `{ success: true, event_id: "evt_..." }` or `false`
+- `identify(...)` - Identify a user, returns `true` or `false`
+- `alias(...)` - Link visitor to user, returns `true` or `false`
+- `conversion(...)` - Track conversion with attribution, returns `{ success: true, conversion_id: "conv_...", attribution: {...} }` or `false`
 
 ### Mbuzz::Api
 
@@ -248,7 +264,11 @@ HTTP client for communicating with mbuzz backend at mbuzz.co/api.
 - Add `User-Agent: mbuzz-ruby/{version}` header
 - Handle HTTP errors (4xx, 5xx) gracefully
 - Handle network errors (timeout, connection refused)
-- Return boolean success/failure
+- Return parsed response or boolean depending on method
+
+**Public Methods**:
+- `post(path, payload)` - Returns `true`/`false` (for identify, alias)
+- `post_with_response(path, payload)` - Returns parsed JSON hash or `nil` (for track, conversion)
 
 **Implementation**: Uses Ruby stdlib `net/http` only (zero external dependencies)
 
@@ -511,9 +531,23 @@ Uses only Ruby standard library:
 ```json
 {
   "accepted": 1,
-  "rejected": []
+  "rejected": [],
+  "events": [
+    {
+      "id": "evt_abc123def456",
+      "event_type": "Signup",
+      "visitor_id": "65dabef8d611f332...",
+      "session_id": "xyz789...",
+      "status": "accepted"
+    }
+  ]
 }
 ```
+
+**Event ID Format**: Prefixed IDs with `evt_` prefix (e.g., `evt_abc123def456`). These IDs can be used to:
+- Link events to conversions via the `event_id` parameter
+- Debug and trace specific events
+- Reference events in support requests
 
 **Headers**:
 ```
