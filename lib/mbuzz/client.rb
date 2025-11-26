@@ -19,8 +19,8 @@ module Mbuzz
       AliasRequest.new(user_id, visitor_id).call
     end
 
-    def self.conversion(visitor_id:, conversion_type:, revenue: nil, currency: "USD", properties: {}, event_id: nil)
-      ConversionRequest.new(visitor_id, conversion_type, revenue, currency, properties, event_id).call
+    def self.conversion(event_id: nil, visitor_id: nil, conversion_type:, revenue: nil, currency: "USD", properties: {})
+      ConversionRequest.new(event_id, visitor_id, conversion_type, revenue, currency, properties).call
     end
   end
 end
