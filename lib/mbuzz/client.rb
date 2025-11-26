@@ -15,7 +15,19 @@ module Mbuzz
         timestamp: Time.now.utc.iso8601
       }.compact
 
-      Api.post(EVENTS_PATH, { events: [event] })
+      response = Api.post_with_response(EVENTS_PATH, { events: [event] })
+      return false unless response
+
+      event_data = response["events"]&.first
+      return false unless event_data
+
+      {
+        success: true,
+        event_id: event_data["id"],
+        event_type: event_data["event_type"],
+        visitor_id: event_data["visitor_id"],
+        session_id: event_data["session_id"]
+      }
     end
 
     def self.identify(user_id:, traits: {})

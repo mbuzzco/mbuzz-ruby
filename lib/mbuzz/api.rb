@@ -17,6 +17,18 @@ module Mbuzz
       false
     end
 
+    def self.post_with_response(path, payload)
+      return nil unless enabled_and_configured?
+
+      response = http_client(path).request(build_request(path, payload))
+      return nil unless success?(response)
+
+      JSON.parse(response.body)
+    rescue ConfigurationError, Net::ReadTimeout, Net::OpenTimeout, Net::HTTPError, JSON::ParserError => e
+      log_error("#{e.class}: #{e.message}")
+      nil
+    end
+
     def self.enabled_and_configured?
       return false unless config.enabled
       config.validate!
