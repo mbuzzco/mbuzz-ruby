@@ -279,15 +279,13 @@ class Mbuzz::ClientTest < Minitest::Test
     assert_equal false, result
   end
 
-  def test_conversion_includes_attribution_models
+  def test_conversion_includes_attribution_status
     stub_conversion_success do
       result = Mbuzz::Client.conversion(
         event_id: "evt_abc123",
         conversion_type: "purchase"
       )
-      assert result[:attribution]["models"].key?("first_touch")
-      assert result[:attribution]["models"].key?("last_touch")
-      assert result[:attribution]["models"].key?("linear")
+      assert_equal "pending", result[:attribution]["status"]
     end
   end
 
@@ -375,44 +373,10 @@ class Mbuzz::ClientTest < Minitest::Test
         "visitor_id" => "vis_abc123",
         "conversion_type" => "purchase",
         "revenue" => "99.0",
-        "converted_at" => "2025-11-26T10:30:00Z",
-        "journey_sessions" => 3
+        "converted_at" => "2025-11-26T10:30:00Z"
       },
       "attribution" => {
-        "status" => "calculated",
-        "models" => {
-          "first_touch" => [
-            {
-              "channel" => "organic_search",
-              "credit" => 1.0,
-              "revenue_credit" => "99.0"
-            }
-          ],
-          "last_touch" => [
-            {
-              "channel" => "email",
-              "credit" => 1.0,
-              "revenue_credit" => "99.0"
-            }
-          ],
-          "linear" => [
-            {
-              "channel" => "organic_search",
-              "credit" => 0.333,
-              "revenue_credit" => "33.0"
-            },
-            {
-              "channel" => "paid_social",
-              "credit" => 0.333,
-              "revenue_credit" => "33.0"
-            },
-            {
-              "channel" => "email",
-              "credit" => 0.334,
-              "revenue_credit" => "33.0"
-            }
-          ]
-        }
+        "status" => "pending"
       }
     }
     Mbuzz::Api.stub(:post_with_response, response) do
