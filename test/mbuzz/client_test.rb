@@ -159,6 +159,116 @@ class Mbuzz::ClientTest < Minitest::Test
     assert_equal false, alias_result
   end
 
+  # Conversion tests
+  def test_conversion_returns_success_with_attribution
+    stub_conversion_success do
+      result = conversion_result
+      assert result[:success]
+      assert_equal "conv_xyz789", result[:conversion_id]
+      assert result[:attribution].is_a?(Hash)
+    end
+  end
+
+  def test_conversion_returns_false_on_api_failure
+    stub_api_failure do
+      assert_equal false, conversion_result
+    end
+  end
+
+  def test_conversion_requires_visitor_id
+    @visitor_id = nil
+    assert_equal false, conversion_result
+  end
+
+  def test_conversion_requires_conversion_type
+    @conversion_type = nil
+    assert_equal false, conversion_result
+  end
+
+  def test_conversion_rejects_empty_conversion_type
+    @conversion_type = ""
+    assert_equal false, conversion_result
+  end
+
+  def test_conversion_rejects_whitespace_conversion_type
+    @conversion_type = "   "
+    assert_equal false, conversion_result
+  end
+
+  def test_conversion_accepts_revenue
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        revenue: 99.00
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_accepts_currency
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        revenue: 99.00,
+        currency: "EUR"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_accepts_properties
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        properties: { plan: "pro" }
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_rejects_invalid_properties
+    result = Mbuzz::Client.conversion(
+      visitor_id: "abc123",
+      conversion_type: "purchase",
+      properties: "not a hash"
+    )
+    assert_equal false, result
+  end
+
+  def test_conversion_accepts_event_id
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        visitor_id: "abc123",
+        conversion_type: "purchase",
+        event_id: "evt_abc123"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_includes_attribution_models
+    stub_conversion_success do
+      result = conversion_result
+      assert result[:attribution]["models"].key?("first_touch")
+      assert result[:attribution]["models"].key?("last_touch")
+      assert result[:attribution]["models"].key?("linear")
+    end
+  end
+
+  def test_conversion_still_truthy_for_boolean_checks
+    stub_conversion_success do
+      result = conversion_result
+      # Backwards compatibility: result is truthy (hash)
+      assert result
+      if result
+        assert true, "Boolean check still works"
+      end
+    end
+  end
+
   private
 
   def track_result
@@ -181,6 +291,17 @@ class Mbuzz::ClientTest < Minitest::Test
     Mbuzz::Client.alias(
       user_id: defined?(@user_id) ? @user_id : 123,
       visitor_id: defined?(@visitor_id) ? @visitor_id : "visitor123"
+    )
+  end
+
+  def conversion_result
+    Mbuzz::Client.conversion(
+      visitor_id: defined?(@visitor_id) ? @visitor_id : "abc123",
+      conversion_type: defined?(@conversion_type) ? @conversion_type : "purchase",
+      revenue: @revenue,
+      currency: @currency || "USD",
+      properties: @properties || {},
+      event_id: @event_id
     )
   end
 
@@ -217,6 +338,61 @@ class Mbuzz::ClientTest < Minitest::Test
 
   def stub_api_failure
     Mbuzz::Api.stub(:post_with_response, nil) do
+      yield
+    end
+  end
+
+  def stub_conversion_success
+    response = {
+      "id" => "conv_xyz789",
+      "visitor_id" => "vis_abc123",
+      "conversion_type" => "purchase",
+      "revenue" => "99.0",
+      "converted_at" => "2025-11-26T10:30:00Z",
+      "attribution" => {
+        "lookback_days" => 30,
+        "sessions_analyzed" => 3,
+        "models" => {
+          "first_touch" => [
+            {
+              "session_id" => "sess_111",
+              "channel" => "organic_search",
+              "credit" => 1.0,
+              "revenue_credit" => "99.0"
+            }
+          ],
+          "last_touch" => [
+            {
+              "session_id" => "sess_333",
+              "channel" => "email",
+              "credit" => 1.0,
+              "revenue_credit" => "99.0"
+            }
+          ],
+          "linear" => [
+            {
+              "session_id" => "sess_111",
+              "channel" => "organic_search",
+              "credit" => 0.333,
+              "revenue_credit" => "33.0"
+            },
+            {
+              "session_id" => "sess_222",
+              "channel" => "paid_social",
+              "credit" => 0.333,
+              "revenue_credit" => "33.0"
+            },
+            {
+              "session_id" => "sess_333",
+              "channel" => "email",
+              "credit" => 0.334,
+              "revenue_credit" => "33.0"
+            }
+          ]
+        }
+      }
+    }
+    Mbuzz::Api.stub(:post_with_response, response) do
       yield
     end
   end
