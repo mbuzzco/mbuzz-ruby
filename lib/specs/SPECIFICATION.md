@@ -219,6 +219,53 @@ Link an anonymous visitor ID to a known user ID.
 
 **Use Case**: Connect pre-signup anonymous behavior to user account after registration.
 
+#### Mbuzz.conversion
+
+Track a conversion and retrieve attribution data.
+
+**Parameters** (at least one identifier required):
+- `event_id` - Prefixed event ID (`evt_*`) - visitor/session derived from event
+- `visitor_id` - Raw visitor ID (64-char hex from `_mbuzz_vid`) - uses most recent session
+- `conversion_type` - Type of conversion (required, e.g., "purchase", "signup")
+- `revenue` - Revenue amount (optional)
+- `currency` - Currency code (optional, default: "USD")
+- `properties` - Additional metadata (optional)
+
+**Returns**:
+- Success: `{ success: true, conversion_id: "conv_...", attribution: {...} }`
+- Failure: `false`
+
+**Identifier Resolution**:
+- If `event_id` provided: Use event's visitor and session (most precise)
+- If only `visitor_id`: Look up visitor, use most recent session
+- If both: `event_id` takes precedence
+
+**Example**:
+```ruby
+# Event-based (recommended)
+track_result = Mbuzz::Client.track(visitor_id: vid, event_type: "checkout")
+if track_result[:success]
+  Mbuzz::Client.conversion(
+    event_id: track_result[:event_id],
+    conversion_type: "purchase",
+    revenue: 99.00
+  )
+end
+
+# Visitor-based (simpler)
+Mbuzz::Client.conversion(
+  visitor_id: vid,
+  conversion_type: "purchase",
+  revenue: 99.00
+)
+```
+
+**Use Cases**:
+| Approach | When to Use |
+|----------|-------------|
+| `event_id` | Tie conversion to specific action (checkout button click) |
+| `visitor_id` | Direct conversions, offline imports, webhook integrations |
+
 ---
 
 ## Service Objects

@@ -3,13 +3,13 @@
 module Mbuzz
   class Client
     class ConversionRequest
-      def initialize(visitor_id, conversion_type, revenue, currency, properties, event_id)
+      def initialize(event_id, visitor_id, conversion_type, revenue, currency, properties)
+        @event_id = event_id
         @visitor_id = visitor_id
         @conversion_type = conversion_type
         @revenue = revenue
         @currency = currency
         @properties = properties
-        @event_id = event_id
       end
 
       def call
@@ -21,7 +21,11 @@ module Mbuzz
       private
 
       def valid?
-        string?(@visitor_id) && present?(@conversion_type) && hash?(@properties) && conversion_id
+        has_identifier? && present?(@conversion_type) && hash?(@properties) && conversion_id
+      end
+
+      def has_identifier?
+        present?(@event_id) || present?(@visitor_id)
       end
 
       def conversion_id
@@ -37,18 +41,26 @@ module Mbuzz
       end
 
       def payload
+        { conversion: conversion_payload }
+      end
+
+      def conversion_payload
         base_payload
-          .tap { |p| p[:revenue] = @revenue if @revenue }
           .tap { |p| p[:event_id] = @event_id if @event_id }
+          .tap { |p| p[:visitor_id] = @visitor_id if @visitor_id }
+          .tap { |p| p[:revenue] = @revenue if @revenue }
       end
 
       def base_payload
-        { visitor_id: @visitor_id, conversion_type: @conversion_type, currency: @currency,
-          properties: @properties, timestamp: Time.now.utc.iso8601 }
+        {
+          conversion_type: @conversion_type,
+          currency: @currency,
+          properties: @properties,
+          timestamp: Time.now.utc.iso8601
+        }
       end
 
       def present?(value) = value && !value.to_s.strip.empty?
-      def string?(value) = value.is_a?(String) && !value.strip.empty?
       def hash?(value) = value.is_a?(Hash)
     end
   end
