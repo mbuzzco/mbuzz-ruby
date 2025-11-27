@@ -35,4 +35,30 @@ module Mbuzz
   def self.configure
     yield(config)
   end
+
+  def self.visitor_id
+    RequestContext.current&.request&.env&.dig(ENV_VISITOR_ID_KEY)
+  end
+
+  def self.user_id
+    RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
+  end
+
+  def self.track(event_type, properties: {})
+    Client.track(
+      visitor_id: visitor_id,
+      user_id: user_id,
+      event_type: event_type,
+      properties: properties
+    )
+  end
+
+  def self.conversion(conversion_type, revenue: nil, properties: {})
+    Client.conversion(
+      visitor_id: visitor_id,
+      conversion_type: conversion_type,
+      revenue: revenue,
+      properties: properties
+    )
+  end
 end
