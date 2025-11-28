@@ -303,6 +303,81 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  # Session tests
+
+  def test_session_returns_true_on_success
+    stub_api_success do
+      result = Mbuzz::Client.session(
+        visitor_id: "visitor123",
+        session_id: "session456",
+        url: "https://example.com/landing?utm_source=google"
+      )
+      assert_equal true, result
+    end
+  end
+
+  def test_session_returns_false_on_failure
+    stub_api_failure do
+      result = Mbuzz::Client.session(
+        visitor_id: "visitor123",
+        session_id: "session456",
+        url: "https://example.com/landing"
+      )
+      assert_equal false, result
+    end
+  end
+
+  def test_session_requires_visitor_id
+    result = Mbuzz::Client.session(
+      visitor_id: nil,
+      session_id: "session456",
+      url: "https://example.com/landing"
+    )
+    assert_equal false, result
+  end
+
+  def test_session_requires_session_id
+    result = Mbuzz::Client.session(
+      visitor_id: "visitor123",
+      session_id: nil,
+      url: "https://example.com/landing"
+    )
+    assert_equal false, result
+  end
+
+  def test_session_requires_url
+    result = Mbuzz::Client.session(
+      visitor_id: "visitor123",
+      session_id: "session456",
+      url: nil
+    )
+    assert_equal false, result
+  end
+
+  def test_session_accepts_referrer
+    stub_api_success do
+      result = Mbuzz::Client.session(
+        visitor_id: "visitor123",
+        session_id: "session456",
+        url: "https://example.com/landing",
+        referrer: "https://google.com/search"
+      )
+      assert_equal true, result
+    end
+  end
+
+  def test_session_accepts_started_at
+    stub_api_success do
+      result = Mbuzz::Client.session(
+        visitor_id: "visitor123",
+        session_id: "session456",
+        url: "https://example.com/landing",
+        started_at: "2025-11-28T10:30:00Z"
+      )
+      assert_equal true, result
+    end
+  end
+
   private
 
   def track_result

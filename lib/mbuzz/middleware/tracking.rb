@@ -16,10 +16,14 @@ module Mbuzz
 
         env[ENV_VISITOR_ID_KEY] = visitor_id
         env[ENV_USER_ID_KEY] = user_id
+        env[ENV_SESSION_ID_KEY] = session_id
 
         RequestContext.with_context(request: request) do
+          create_session_if_new
+
           status, headers, body = app.call(env)
           set_visitor_cookie(headers)
+          set_session_cookie(headers)
           [status, headers, body]
         end
       end
@@ -43,18 +47,84 @@ module Mbuzz
       end
 
       def set_visitor_cookie(headers)
-        cookie_options = {
+        Rack::Utils.set_cookie_header!(headers, VISITOR_COOKIE_NAME, visitor_cookie_options)
+      end
+
+      def visitor_cookie_options
+        base_cookie_options.merge(
           value: visitor_id,
+          max_age: VISITOR_COOKIE_MAX_AGE
+        )
+      end
+
+      # Session ID management
+
+      def session_id
+        @session_id ||= session_id_from_cookie || generate_session_id
+      end
+
+      def session_id_from_cookie
+        request.cookies[SESSION_COOKIE_NAME]
+      end
+
+      def generate_session_id
+        SecureRandom.hex(32)
+      end
+
+      def new_session?
+        session_id_from_cookie.nil?
+      end
+
+      # Session creation
+
+      def create_session_if_new
+        return unless new_session?
+
+        create_session_async
+      end
+
+      def create_session_async
+        Thread.new { create_session }
+      end
+
+      def create_session
+        Client.session(
+          visitor_id: visitor_id,
+          session_id: session_id,
+          url: request.url,
+          referrer: request.referer
+        )
+      rescue => e
+        log_session_error(e)
+      end
+
+      def log_session_error(error)
+        Mbuzz.config.logger&.error("Session creation failed: #{error.message}")
+      end
+
+      # Session cookie
+
+      def set_session_cookie(headers)
+        Rack::Utils.set_cookie_header!(headers, SESSION_COOKIE_NAME, session_cookie_options)
+      end
+
+      def session_cookie_options
+        base_cookie_options.merge(
+          value: session_id,
+          max_age: SESSION_COOKIE_MAX_AGE
+        )
+      end
+
+      # Shared cookie options
+
+      def base_cookie_options
+        options = {
           path: VISITOR_COOKIE_PATH,
-          max_age: VISITOR_COOKIE_MAX_AGE,
           httponly: true,
           same_site: VISITOR_COOKIE_SAME_SITE
         }
-
-        # Add Secure flag for HTTPS requests
-        cookie_options[:secure] = true if request.ssl?
-
-        Rack::Utils.set_cookie_header!(headers, VISITOR_COOKIE_NAME, cookie_options)
+        options[:secure] = true if request.ssl?
+        options
       end
     end
   end

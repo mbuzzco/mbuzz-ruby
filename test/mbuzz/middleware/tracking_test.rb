@@ -48,7 +48,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
   def test_generates_visitor_id_when_missing
     _status, headers, _body = call_result
 
-    cookie_header = headers["set-cookie"]
+    cookie_header = Array(headers["set-cookie"]).join("\n")
     refute_nil cookie_header
     assert_match(/mbuzz_visitor_id=/, cookie_header)
   end
@@ -57,7 +57,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     @existing_visitor_id = "existing123"
     _status, headers, _body = call_result
 
-    cookie_header = headers["set-cookie"]
+    cookie_header = Array(headers["set-cookie"]).join("\n")
     assert_match(/mbuzz_visitor_id=existing123/, cookie_header)
   end
 
@@ -89,6 +89,84 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert_equal "visitor789", captured_visitor_id
   end
 
+  # Session cookie tests
+
+  def test_generates_session_id_when_missing
+    _status, headers, _body = call_result
+
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    refute_nil cookie_header
+    assert_match(/_mbuzz_sid=/, cookie_header)
+  end
+
+  def test_preserves_existing_session_id
+    @existing_session_id = "session123abc"
+    _status, headers, _body = call_result
+
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    assert_match(/_mbuzz_sid=session123abc/, cookie_header)
+  end
+
+  def test_extracts_session_id_from_cookie
+    @existing_session_id = "session789xyz"
+
+    captured_session_id = nil
+    @app = ->(env) {
+      captured_session_id = env["mbuzz.session_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    call_result
+    assert_equal "session789xyz", captured_session_id
+  end
+
+  def test_sets_session_id_in_env
+    captured_session_id = nil
+    @app = ->(env) {
+      captured_session_id = env["mbuzz.session_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    call_result
+    refute_nil captured_session_id
+    assert_equal 64, captured_session_id.length
+  end
+
+  def test_creates_session_on_new_visit
+    session_created = false
+
+    Mbuzz::Client.stub(:session, ->(**args) { session_created = true; true }) do
+      call_result
+      sleep 0.1 # Allow thread to execute
+    end
+
+    assert session_created, "Session should be created for new visitors"
+  end
+
+  def test_does_not_create_session_on_existing_session
+    @existing_session_id = "existing_session"
+    session_created = false
+
+    Mbuzz::Client.stub(:session, ->(**args) { session_created = true; true }) do
+      call_result
+      sleep 0.1
+    end
+
+    refute session_created, "Session should not be created for existing sessions"
+  end
+
+  def test_session_creation_failure_does_not_break_request
+    Mbuzz::Client.stub(:session, ->(**args) { raise "API Error" }) do
+      status, _headers, body = call_result
+      sleep 0.1
+
+      assert_equal 200, status
+      assert_equal ["OK"], body
+    end
+  end
+
   private
 
   def call_result
@@ -107,9 +185,10 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "rack.session" => @session || {}
     }
 
-    if @existing_visitor_id
-      env["HTTP_COOKIE"] = "mbuzz_visitor_id=#{@existing_visitor_id}"
-    end
+    cookies = []
+    cookies << "mbuzz_visitor_id=#{@existing_visitor_id}" if @existing_visitor_id
+    cookies << "_mbuzz_sid=#{@existing_session_id}" if @existing_session_id
+    env["HTTP_COOKIE"] = cookies.join("; ") if cookies.any?
 
     env
   end
