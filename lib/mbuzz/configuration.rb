@@ -4,7 +4,7 @@ module Mbuzz
   class ConfigurationError < StandardError; end
 
   class Configuration
-    attr_accessor :api_key, :api_url, :enabled, :debug, :timeout, :batch_size, :flush_interval
+    attr_accessor :api_key, :api_url, :enabled, :debug, :timeout, :batch_size, :flush_interval, :logger
 
     def initialize
       @api_url = "https://mbuzz.co/api/v1"

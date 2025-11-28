@@ -4,6 +4,7 @@ require_relative "client/track_request"
 require_relative "client/identify_request"
 require_relative "client/alias_request"
 require_relative "client/conversion_request"
+require_relative "client/session_request"
 
 module Mbuzz
   class Client
@@ -21,6 +22,10 @@ module Mbuzz
 
     def self.conversion(event_id: nil, visitor_id: nil, conversion_type:, revenue: nil, currency: "USD", properties: {})
       ConversionRequest.new(event_id, visitor_id, conversion_type, revenue, currency, properties).call
+    end
+
+    def self.session(visitor_id:, session_id:, url:, referrer: nil, started_at: nil)
+      SessionRequest.new(visitor_id, session_id, url, referrer, started_at).call
     end
   end
 end

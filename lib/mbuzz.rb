@@ -18,15 +18,20 @@ module Mbuzz
   IDENTIFY_PATH = "/identify"
   ALIAS_PATH = "/alias"
   CONVERSIONS_PATH = "/conversions"
+  SESSIONS_PATH = "/sessions"
 
   VISITOR_COOKIE_NAME = "mbuzz_visitor_id"
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
 
+  SESSION_COOKIE_NAME = "_mbuzz_sid"
+  SESSION_COOKIE_MAX_AGE = 30 * 60 # 30 minutes
+
   SESSION_USER_ID_KEY = "user_id"
   ENV_USER_ID_KEY = "mbuzz.user_id"
   ENV_VISITOR_ID_KEY = "mbuzz.visitor_id"
+  ENV_SESSION_ID_KEY = "mbuzz.session_id"
 
   def self.config
     @config ||= Configuration.new
@@ -42,6 +47,10 @@ module Mbuzz
 
   def self.user_id
     RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
+  end
+
+  def self.session_id
+    RequestContext.current&.request&.env&.dig(ENV_SESSION_ID_KEY)
   end
 
   def self.track(event_type, properties: {})

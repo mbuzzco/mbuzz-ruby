@@ -32,5 +32,9 @@ module Mbuzz
     def mbuzz_visitor_id
       request.env[ENV_VISITOR_ID_KEY]
     end
+
+    def mbuzz_session_id
+      request.env[ENV_SESSION_ID_KEY]
+    end
   end
 end
