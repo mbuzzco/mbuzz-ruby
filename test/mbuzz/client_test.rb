@@ -89,19 +89,6 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
-  # Alias tests
-  def test_alias_returns_true_on_success
-    stub_api_success do
-      assert_equal true, alias_result
-    end
-  end
-
-  def test_alias_returns_false_on_failure
-    stub_api_failure do
-      assert_equal false, alias_result
-    end
-  end
-
   # Validation tests - ensuring invalid input doesn't crash the app
   def test_track_returns_false_with_nil_event_type
     @event_type = nil
@@ -137,26 +124,6 @@ class Mbuzz::ClientTest < Minitest::Test
   def test_identify_returns_false_with_invalid_traits
     @traits = "not a hash"
     assert_equal false, identify_result
-  end
-
-  def test_alias_returns_false_with_nil_user_id
-    @user_id = nil
-    assert_equal false, alias_result
-  end
-
-  def test_alias_returns_false_with_nil_visitor_id
-    @visitor_id = nil
-    assert_equal false, alias_result
-  end
-
-  def test_alias_returns_false_with_empty_visitor_id
-    @visitor_id = ""
-    assert_equal false, alias_result
-  end
-
-  def test_alias_returns_false_with_invalid_visitor_id_type
-    @visitor_id = 456
-    assert_equal false, alias_result
   end
 
   # Conversion tests - dual-path: event_id OR visitor_id
@@ -395,14 +362,6 @@ class Mbuzz::ClientTest < Minitest::Test
       traits: @traits || {}
     )
   end
-
-  def alias_result
-    Mbuzz::Client.alias(
-      user_id: defined?(@user_id) ? @user_id : 123,
-      visitor_id: defined?(@visitor_id) ? @visitor_id : "visitor123"
-    )
-  end
-
 
   def stub_api_success
     Mbuzz::Api.stub(:post, true) do

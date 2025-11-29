@@ -2,22 +2,17 @@
 
 require_relative "client/track_request"
 require_relative "client/identify_request"
-require_relative "client/alias_request"
 require_relative "client/conversion_request"
 require_relative "client/session_request"
 
 module Mbuzz
   class Client
-    def self.track(user_id: nil, visitor_id: nil, event_type:, properties: {})
-      TrackRequest.new(user_id, visitor_id, event_type, properties).call
+    def self.track(user_id: nil, visitor_id: nil, session_id: nil, event_type:, properties: {})
+      TrackRequest.new(user_id, visitor_id, session_id, event_type, properties).call
     end
 
-    def self.identify(user_id:, traits: {})
-      IdentifyRequest.new(user_id, traits).call
-    end
-
-    def self.alias(user_id:, visitor_id:)
-      AliasRequest.new(user_id, visitor_id).call
+    def self.identify(user_id:, visitor_id: nil, traits: {})
+      IdentifyRequest.new(user_id, visitor_id, traits).call
     end
 
     def self.conversion(event_id: nil, visitor_id: nil, conversion_type:, revenue: nil, currency: "USD", properties: {})

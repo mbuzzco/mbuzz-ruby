@@ -32,5 +32,9 @@ module Mbuzz
     def user_agent
       @request.user_agent
     end
+
+    def enriched_properties(custom = {})
+      { url: url, referrer: referrer }.compact.merge(custom)
+    end
   end
 end

@@ -3,8 +3,9 @@
 module Mbuzz
   class Client
     class IdentifyRequest
-      def initialize(user_id, traits)
+      def initialize(user_id, visitor_id, traits)
         @user_id = user_id
+        @visitor_id = visitor_id
         @traits = traits
       end
 
@@ -21,7 +22,12 @@ module Mbuzz
       end
 
       def payload
-        { user_id: @user_id, traits: @traits, timestamp: Time.now.utc.iso8601 }
+        {
+          user_id: @user_id,
+          visitor_id: @visitor_id,
+          traits: @traits,
+          timestamp: Time.now.utc.iso8601
+        }.compact
       end
 
       def id?(value) = value.is_a?(String) || value.is_a?(Numeric)

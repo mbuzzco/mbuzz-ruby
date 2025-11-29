@@ -14,14 +14,8 @@ module Mbuzz
     def mbuzz_identify(traits: {})
       Client.identify(
         user_id: mbuzz_user_id,
+        visitor_id: mbuzz_visitor_id,
         traits: traits
-      )
-    end
-
-    def mbuzz_alias
-      Client.alias(
-        user_id: mbuzz_user_id,
-        visitor_id: mbuzz_visitor_id
       )
     end
 

@@ -44,15 +44,6 @@ class Mbuzz::ControllerHelpersTest < Minitest::Test
     end
   end
 
-  def test_mbuzz_alias_calls_client_alias
-    @controller.set_visitor_id("visitor456")
-    stub_client_alias do
-      result = @controller.mbuzz_alias
-      assert_equal true, result
-      assert @alias_called
-    end
-  end
-
   def test_mbuzz_user_id_returns_user_id_from_env
     @controller.set_user_id(789)
     assert_equal 789, @controller.mbuzz_user_id
@@ -80,13 +71,6 @@ class Mbuzz::ControllerHelpersTest < Minitest::Test
   def stub_client_identify
     @identify_called = false
     Mbuzz::Client.stub(:identify, ->(*args) { @identify_called = true; true }) do
-      yield
-    end
-  end
-
-  def stub_client_alias
-    @alias_called = false
-    Mbuzz::Client.stub(:alias, ->(*args) { @alias_called = true; true }) do
       yield
     end
   end
