@@ -1,7 +1,8 @@
 # Conversions API - Technical Specification
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Created**: 2025-11-26
+**Updated**: 2025-11-26
 **Status**: Ready for Implementation
 
 ---
@@ -23,24 +24,30 @@ Track a conversion event and trigger attribution calculation.
 **Method Signature**:
 ```ruby
 Mbuzz::Client.conversion(
-  visitor_id:,           # Required - The visitor who converted
+  event_id: nil,         # Identifier option A - Link to specific event
+  visitor_id: nil,       # Identifier option B - Visitor ID (uses most recent session)
   conversion_type:,      # Required - Type: "purchase", "signup", "upgrade", etc.
   revenue: nil,          # Optional - Revenue amount (numeric)
   currency: "USD",       # Optional - Currency code (default: USD)
-  properties: {},        # Optional - Additional metadata
-  event_id: nil          # Optional - Link to specific event that triggered conversion
+  properties: {}         # Optional - Additional metadata
 )
 ```
 
 **Parameters**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `visitor_id` | String | Yes | Visitor ID from cookie (`_mbuzz_vid`) |
+| `event_id` | String | One of event_id/visitor_id | Prefixed event ID (`evt_*`) - visitor/session derived from event |
+| `visitor_id` | String | One of event_id/visitor_id | Raw visitor ID (64-char hex from `_mbuzz_vid`) - uses most recent session |
 | `conversion_type` | String | Yes | Type of conversion (e.g., "purchase", "signup") |
 | `revenue` | Numeric | No | Revenue amount for ROI calculations |
 | `currency` | String | No | ISO 4217 currency code (default: "USD") |
 | `properties` | Hash | No | Additional conversion metadata |
-| `event_id` | String | No | Link to triggering event (`evt_*` prefix ID) |
+
+**Identifier Resolution**:
+- If `event_id` provided: Use event's visitor and session (most precise)
+- If only `visitor_id` provided: Look up visitor, use most recent session
+- If both provided: `event_id` takes precedence
+- If neither provided: Return `false` (validation error)
 
 **Returns**:
 - Success: `{ success: true, conversion_id: "conv_abc123", attribution: {...} }`
@@ -48,41 +55,28 @@ Mbuzz::Client.conversion(
 
 **Example Usage**:
 ```ruby
-# Basic conversion
-result = Mbuzz::Client.conversion(
-  visitor_id: cookies[:_mbuzz_vid],
-  conversion_type: "purchase",
-  revenue: 99.00
-)
-
-# Conversion with full details
-result = Mbuzz::Client.conversion(
-  visitor_id: mbuzz_visitor_id,
-  conversion_type: "purchase",
-  revenue: 299.00,
-  currency: "USD",
-  properties: {
-    plan: "pro",
-    billing_cycle: "annual",
-    coupon_code: "SAVE20"
-  }
-)
-
-# Conversion linked to triggering event (recommended)
+# Option A: Event-based (recommended for precise attribution)
 track_result = Mbuzz::Client.track(
   visitor_id: mbuzz_visitor_id,
-  event_type: "checkout_completed",
+  event_type: 'checkout_completed',
   properties: { order_id: order.id }
 )
 
 if track_result[:success]
   result = Mbuzz::Client.conversion(
-    visitor_id: mbuzz_visitor_id,
-    conversion_type: "purchase",
-    revenue: order.total,
-    event_id: track_result[:event_id]  # Links conversion to specific event
+    event_id: track_result[:event_id],
+    conversion_type: 'purchase',
+    revenue: order.total
   )
 end
+
+# Option B: Visitor-based (simpler, for direct conversions)
+result = Mbuzz::Client.conversion(
+  visitor_id: mbuzz_visitor_id,
+  conversion_type: 'purchase',
+  revenue: 99.00,
+  properties: { plan: 'pro' }
+)
 
 # Access attribution data
 if result[:success]
@@ -99,6 +93,25 @@ end
 
 ---
 
+## When to Use Each Approach
+
+| Approach | Use Case |
+|----------|----------|
+| **Event-based** (`event_id`) | Tie conversion to specific action (checkout button click, form submit) |
+| **Visitor-based** (`visitor_id`) | Direct conversions, offline imports, webhook integrations, simpler SDK usage |
+
+**Event-based advantages**:
+- Most precise - conversion tied to exact moment in journey
+- Event has full context (properties, timestamp)
+- Better for debugging and analysis
+
+**Visitor-based advantages**:
+- Simpler - don't need to track an event first
+- Works for offline/imported conversions
+- Better for direct purchase flows (land → buy immediately)
+
+---
+
 ## Backend Integration
 
 ### API Endpoint
@@ -112,18 +125,31 @@ Content-Type: application/json
 User-Agent: mbuzz-ruby/1.0.0
 ```
 
-**Request Body**:
+**Request Body (Event-based)**:
 ```json
 {
-  "visitor_id": "65dabef8d611f332d5bb88f5d6870c733d89f962594575b66f0e1de1ede1ebf0",
-  "conversion_type": "purchase",
-  "revenue": 99.00,
-  "currency": "USD",
-  "properties": {
-    "plan": "pro",
-    "billing_cycle": "annual"
-  },
-  "event_id": "evt_abc123"
+  "conversion": {
+    "event_id": "evt_abc123def456",
+    "conversion_type": "purchase",
+    "revenue": 99.00,
+    "properties": {
+      "plan": "pro"
+    }
+  }
+}
+```
+
+**Request Body (Visitor-based)**:
+```json
+{
+  "conversion": {
+    "visitor_id": "65dabef8d611f332d5bb88f5d6870c733d89f962594575b66f0e1de1ede1ebf0",
+    "conversion_type": "purchase",
+    "revenue": 99.00,
+    "properties": {
+      "plan": "pro"
+    }
+  }
 }
 ```
 
@@ -183,6 +209,12 @@ User-Agent: mbuzz-ruby/1.0.0
 **Error Response** (422 Unprocessable Entity):
 ```json
 {
+  "errors": ["event_id or visitor_id is required"]
+}
+```
+
+```json
+{
   "errors": ["Visitor not found"]
 }
 ```
@@ -219,59 +251,79 @@ The backend calculates attribution across all active models for the account:
 ```ruby
 # lib/mbuzz/client.rb
 
-def self.conversion(visitor_id:, conversion_type:, revenue: nil, currency: "USD", properties: {}, event_id: nil)
-  return false unless valid_visitor_id?(visitor_id)
-  return false unless valid_conversion_type?(conversion_type)
-  return false unless valid_properties?(properties)
-
-  payload = {
-    visitor_id: visitor_id,
-    conversion_type: conversion_type,
-    currency: currency,
-    properties: properties,
-    timestamp: Time.now.utc.iso8601
-  }.tap do |p|
-    p[:revenue] = revenue if revenue
-    p[:event_id] = event_id if event_id
-  end
-
-  response = Api.post_with_response(CONVERSIONS_PATH, payload)
-  return false unless response
-
-  {
-    success: true,
-    conversion_id: response["id"],
-    attribution: response["attribution"]
-  }
-rescue StandardError => e
-  log_error("Conversion error: #{e.message}")
-  false
-end
-
-private_class_method def self.valid_conversion_type?(conversion_type)
-  return false if conversion_type.nil?
-  return false if conversion_type.to_s.strip.empty?
-  true
+def self.conversion(event_id: nil, visitor_id: nil, conversion_type:, revenue: nil, currency: "USD", properties: {})
+  ConversionRequest.new(event_id, visitor_id, conversion_type, revenue, currency, properties).call
 end
 ```
 
-### API Changes Required
-
-The `Mbuzz::Api` class needs a new method that returns the response body (not just boolean):
+### ConversionRequest Implementation
 
 ```ruby
-# lib/mbuzz/api.rb
+# lib/mbuzz/client/conversion_request.rb
 
-def self.post_with_response(path, payload)
-  return nil unless enabled_and_configured?
+module Mbuzz
+  class Client
+    class ConversionRequest
+      def initialize(event_id, visitor_id, conversion_type, revenue, currency, properties)
+        @event_id = event_id
+        @visitor_id = visitor_id
+        @conversion_type = conversion_type
+        @revenue = revenue
+        @currency = currency
+        @properties = properties
+      end
 
-  response = http_client(path).request(build_request(path, payload))
-  return nil unless success?(response)
+      def call
+        return false unless valid?
 
-  JSON.parse(response.body)
-rescue StandardError => e
-  log_error("#{e.class}: #{e.message}")
-  nil
+        response = Api.post_with_response(CONVERSIONS_PATH, payload)
+        return false unless response
+
+        {
+          success: true,
+          conversion_id: response["id"],
+          attribution: symbolize_attribution(response["attribution"])
+        }
+      end
+
+      private
+
+      def valid?
+        has_identifier? && present?(@conversion_type) && hash?(@properties)
+      end
+
+      def has_identifier?
+        present?(@event_id) || present?(@visitor_id)
+      end
+
+      def payload
+        {
+          conversion: base_payload
+            .tap { |p| p[:event_id] = @event_id if @event_id }
+            .tap { |p| p[:visitor_id] = @visitor_id if @visitor_id }
+            .tap { |p| p[:revenue] = @revenue if @revenue }
+        }
+      end
+
+      def base_payload
+        {
+          conversion_type: @conversion_type,
+          currency: @currency,
+          properties: @properties,
+          timestamp: Time.now.utc.iso8601
+        }
+      end
+
+      def symbolize_attribution(attr)
+        return nil unless attr
+        # Convert string keys to symbols for Ruby-friendly access
+        attr.transform_keys(&:to_sym)
+      end
+
+      def present?(value) = value && !value.to_s.strip.empty?
+      def hash?(value) = value.is_a?(Hash)
+    end
+  end
 end
 ```
 
@@ -291,18 +343,19 @@ CONVERSIONS_PATH = "/conversions"
 
 | Field | Rule | Error Behavior |
 |-------|------|----------------|
-| `visitor_id` | Required, non-empty string | Return `false` |
+| `event_id` OR `visitor_id` | At least one required | Return `false` |
 | `conversion_type` | Required, non-empty string | Return `false` |
 | `revenue` | Optional, numeric if present | Return `false` if non-numeric |
-| `currency` | Optional, defaults to "USD" | N/A |
 | `properties` | Optional, must be Hash | Return `false` if not Hash |
 
 ### Backend Validation
 
 | Field | Rule | Error Response |
 |-------|------|----------------|
-| `visitor_id` | Must exist in account | 422 "Visitor not found" |
-| `conversion_type` | Non-empty string | 422 "Conversion type required" |
+| `event_id` OR `visitor_id` | At least one required | 422 "event_id or visitor_id is required" |
+| `event_id` | Must exist if provided | 422 "Event not found" |
+| `visitor_id` | Must exist if provided | 422 "Visitor not found" |
+| `conversion_type` | Non-empty string | 422 "conversion_type is required" |
 | `revenue` | Numeric if present | 422 "Revenue must be numeric" |
 
 ---
@@ -313,11 +366,11 @@ Following the gem's philosophy: **never raise exceptions**.
 
 ```ruby
 # All errors return false
-result = Mbuzz::Client.conversion(visitor_id: nil, conversion_type: "purchase")
-# => false
+result = Mbuzz::Client.conversion(conversion_type: "purchase")
+# => false (no identifier)
 
 result = Mbuzz::Client.conversion(visitor_id: "abc", conversion_type: "")
-# => false
+# => false (empty conversion_type)
 
 # Network errors return false
 result = Mbuzz::Client.conversion(visitor_id: "abc", conversion_type: "purchase")
@@ -335,18 +388,53 @@ result = Mbuzz::Client.conversion(visitor_id: "abc", conversion_type: "purchase"
 ### Unit Tests
 
 ```ruby
-# test/mbuzz/client_test.rb
+# test/mbuzz/client/conversion_request_test.rb
 
-class ClientConversionTest < Minitest::Test
-  def test_conversion_requires_visitor_id
+class ConversionRequestTest < Minitest::Test
+  # Identifier validation
+  def test_requires_event_id_or_visitor_id
     result = Mbuzz::Client.conversion(
-      visitor_id: nil,
       conversion_type: "purchase"
     )
     assert_equal false, result
   end
 
-  def test_conversion_requires_conversion_type
+  def test_accepts_event_id_only
+    stub_successful_conversion_response
+
+    result = Mbuzz::Client.conversion(
+      event_id: "evt_abc123",
+      conversion_type: "purchase"
+    )
+
+    assert result[:success]
+  end
+
+  def test_accepts_visitor_id_only
+    stub_successful_conversion_response
+
+    result = Mbuzz::Client.conversion(
+      visitor_id: "65dabef8d611f332d5bb88f5d6870c733d89f962594575b66f0e1de1ede1ebf0",
+      conversion_type: "purchase"
+    )
+
+    assert result[:success]
+  end
+
+  def test_accepts_both_identifiers
+    stub_successful_conversion_response
+
+    result = Mbuzz::Client.conversion(
+      event_id: "evt_abc123",
+      visitor_id: "65dabef8...",
+      conversion_type: "purchase"
+    )
+
+    assert result[:success]
+  end
+
+  # Conversion type validation
+  def test_requires_conversion_type
     result = Mbuzz::Client.conversion(
       visitor_id: "abc123",
       conversion_type: nil
@@ -354,7 +442,7 @@ class ClientConversionTest < Minitest::Test
     assert_equal false, result
   end
 
-  def test_conversion_rejects_empty_conversion_type
+  def test_rejects_empty_conversion_type
     result = Mbuzz::Client.conversion(
       visitor_id: "abc123",
       conversion_type: ""
@@ -362,31 +450,28 @@ class ClientConversionTest < Minitest::Test
     assert_equal false, result
   end
 
-  def test_conversion_accepts_valid_params
+  # Response handling
+  def test_returns_conversion_id_on_success
     stub_successful_conversion_response
 
     result = Mbuzz::Client.conversion(
-      visitor_id: "abc123",
-      conversion_type: "purchase",
-      revenue: 99.00
-    )
-
-    assert result[:success]
-    assert result[:conversion_id].start_with?("conv_")
-    assert result[:attribution].is_a?(Hash)
-  end
-
-  def test_conversion_includes_attribution_models
-    stub_successful_conversion_response
-
-    result = Mbuzz::Client.conversion(
-      visitor_id: "abc123",
+      event_id: "evt_abc123",
       conversion_type: "purchase"
     )
 
+    assert result[:conversion_id].start_with?("conv_")
+  end
+
+  def test_returns_attribution_data
+    stub_successful_conversion_response
+
+    result = Mbuzz::Client.conversion(
+      event_id: "evt_abc123",
+      conversion_type: "purchase"
+    )
+
+    assert result[:attribution].is_a?(Hash)
     assert result[:attribution][:models].key?("first_touch")
-    assert result[:attribution][:models].key?("last_touch")
-    assert result[:attribution][:models].key?("linear")
   end
 end
 ```
@@ -398,44 +483,38 @@ end
 visitor_id = "uat_#{SecureRandom.hex(8)}"
 
 # Create journey with 3 sessions
+event_ids = []
 3.times do |i|
-  Mbuzz::Client.track(
+  result = Mbuzz::Client.track(
     visitor_id: visitor_id,
     event_type: "page_view",
     properties: {
-      session_id: "sess_#{i}",
+      session_id: "sess_#{i}_#{SecureRandom.hex(4)}",
       utm_source: ["google", "facebook", "newsletter"][i],
       utm_medium: ["organic", "paid", "email"][i]
     }
   )
+  event_ids << result[:event_id] if result[:success]
 end
 
-# Create conversion
+# Test event-based conversion
 result = Mbuzz::Client.conversion(
-  visitor_id: visitor_id,
+  event_id: event_ids.last,
   conversion_type: "purchase",
   revenue: 99.00
 )
 
-# Verify attribution
 assert result[:success]
 assert_equal 3, result[:attribution][:sessions_analyzed]
 
-# First touch should credit first session
-first_touch = result[:attribution][:models]["first_touch"]
-assert_equal "organic_search", first_touch.first[:channel]
-assert_equal 1.0, first_touch.first[:credit]
+# Test visitor-based conversion
+result2 = Mbuzz::Client.conversion(
+  visitor_id: visitor_id,
+  conversion_type: "upsell",
+  revenue: 49.00
+)
 
-# Last touch should credit last session
-last_touch = result[:attribution][:models]["last_touch"]
-assert_equal "email", last_touch.first[:channel]
-
-# Linear should split evenly
-linear = result[:attribution][:models]["linear"]
-assert_equal 3, linear.size
-linear.each do |credit|
-  assert_in_delta 0.333, credit[:credit], 0.01
-end
+assert result2[:success]
 ```
 
 ---
@@ -449,24 +528,25 @@ class CheckoutsController < ApplicationController
   def create
     @order = Order.create!(order_params)
 
-    # Track conversion with attribution
-    result = Mbuzz::Client.conversion(
+    # Option A: Event-based (recommended)
+    track_result = Mbuzz::Client.track(
       visitor_id: mbuzz_visitor_id,
-      conversion_type: "purchase",
-      revenue: @order.total,
-      properties: {
-        order_id: @order.id,
-        items_count: @order.items.count,
-        coupon_code: @order.coupon_code
-      }
+      event_type: "checkout_completed",
+      properties: { order_id: @order.id }
     )
 
-    if result[:success]
-      # Store attribution for analytics
+    if track_result[:success]
+      result = Mbuzz::Client.conversion(
+        event_id: track_result[:event_id],
+        conversion_type: "purchase",
+        revenue: @order.total,
+        properties: { items_count: @order.items.count }
+      )
+
       @order.update!(
         mbuzz_conversion_id: result[:conversion_id],
         attribution_data: result[:attribution]
-      )
+      ) if result[:success]
     end
 
     redirect_to order_confirmation_path(@order)
@@ -474,81 +554,31 @@ class CheckoutsController < ApplicationController
 end
 ```
 
-### Background Job
+### Background Job (Offline Conversion Import)
 
 ```ruby
-class ProcessSubscriptionJob < ApplicationJob
-  def perform(subscription_id)
-    subscription = Subscription.find(subscription_id)
-    visitor = subscription.user.mbuzz_visitor_id
-
+class ImportOfflineConversionJob < ApplicationJob
+  def perform(visitor_id, conversion_type, revenue)
+    # Visitor-based - no event tracking needed
     result = Mbuzz::Client.conversion(
-      visitor_id: visitor,
-      conversion_type: "subscription",
-      revenue: subscription.amount,
-      properties: {
-        plan: subscription.plan.name,
-        billing_cycle: subscription.billing_cycle,
-        trial: subscription.trial?
-      }
+      visitor_id: visitor_id,
+      conversion_type: conversion_type,
+      revenue: revenue,
+      properties: { source: "offline_import" }
     )
 
-    subscription.update!(attribution_data: result[:attribution]) if result[:success]
+    Rails.logger.info "Imported conversion: #{result[:conversion_id]}" if result[:success]
   end
 end
 ```
 
 ---
 
-## Migration Path
+## Changelog
 
-### From REST API to SDK
-
-**Before** (REST API):
-```ruby
-uri = URI("https://mbuzz.co/api/v1/conversions")
-http = Net::HTTP.new(uri.host, uri.port)
-http.use_ssl = true
-
-request = Net::HTTP::Post.new(uri.path)
-request["Authorization"] = "Bearer #{api_key}"
-request["Content-Type"] = "application/json"
-request.body = {
-  visitor_id: visitor_id,
-  conversion_type: "purchase",
-  revenue: 99.00
-}.to_json
-
-response = http.request(request)
-data = JSON.parse(response.body)
-```
-
-**After** (SDK):
-```ruby
-result = Mbuzz::Client.conversion(
-  visitor_id: visitor_id,
-  conversion_type: "purchase",
-  revenue: 99.00
-)
-```
-
----
-
-## Success Criteria
-
-- [ ] `Mbuzz::Client.conversion` method implemented
-- [ ] Returns `false` on validation failure
-- [ ] Returns attribution hash on success
-- [ ] Handles network errors gracefully
-- [ ] Unit tests cover all validation cases
-- [ ] Integration test validates full attribution flow
-- [ ] Documentation updated in README
-
----
-
-## Dependencies
-
-**None** - Uses existing `Mbuzz::Api` infrastructure with new `post_with_response` method.
+| Date | Change |
+|------|--------|
+| 2025-11-26 | Initial spec - support both `event_id` and `visitor_id` identifiers |
 
 ---
 
