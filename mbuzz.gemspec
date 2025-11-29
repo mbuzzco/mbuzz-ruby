@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors = ["mbuzz team"]
   spec.email = ["support@mbuzz.co"]
 
-  spec.summary = "Server-side multi-touch attribution tracking for Ruby applications"
-  spec.description = "A lightweight Ruby gem for multi-touch attribution tracking. Track user journeys, conversions, and marketing attribution with zero client-side JavaScript. Works with Rails, Sinatra, and any Rack application."
+  spec.summary = "Server-side multi-touch attribution for Ruby"
+  spec.description = "Track customer journeys, attribute conversions, know which channels drive revenue. Simple 4-call API: init, event, conversion, identify. Works with Rails, Sinatra, and any Rack application."
   spec.homepage = "https://mbuzz.co"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"

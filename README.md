@@ -1,39 +1,105 @@
-# Mbuzz
+# mbuzz
 
-TODO: Delete this and the text below, and describe your gem
-
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/mbuzz`. To experiment with that code, run `bin/console` for an interactive prompt.
+Server-side multi-touch attribution for Ruby. Track customer journeys, attribute conversions, know which channels drive revenue.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+Add to your Gemfile:
 
-Install the gem and add to the application's Gemfile by executing:
-
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+```ruby
+gem 'mbuzz'
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+Then:
 
 ```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+bundle install
 ```
 
-## Usage
+## Quick Start
 
-TODO: Write usage instructions here
+### 1. Initialize
 
-## Development
+```ruby
+# config/initializers/mbuzz.rb
+Mbuzz.init(api_key: ENV['MBUZZ_API_KEY'])
+```
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake test` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+### 2. Track Events
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+Track steps in the customer journey:
 
-## Contributing
+```ruby
+Mbuzz.event("page_view", url: request.url)
+Mbuzz.event("add_to_cart", product_id: "SKU-123", price: 49.99)
+Mbuzz.event("checkout_started", cart_total: 99.99)
+```
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/mbuzz.
+### 3. Track Conversions
+
+Record revenue-generating outcomes:
+
+```ruby
+Mbuzz.conversion("purchase",
+  revenue: 99.99,
+  order_id: order.id
+)
+```
+
+### 4. Identify Users
+
+Link visitors to known users (enables cross-device attribution):
+
+```ruby
+# On signup or login
+Mbuzz.identify(current_user.id,
+  traits: {
+    email: current_user.email,
+    name: current_user.name
+  }
+)
+```
+
+## Rails Integration
+
+mbuzz provides:
+- Middleware for visitor and session cookie management
+- `mbuzz_visitor_id` helper in controllers
+
+## Configuration Options
+
+```ruby
+Mbuzz.init(
+  api_key: "sk_live_...",             # Required - from mbuzz.co dashboard
+  api_url: "https://mbuzz.co/api/v1", # Optional - API endpoint
+  session_timeout: 30,                # Optional - session timeout in minutes
+  debug: false                        # Optional - enable debug logging
+)
+```
+
+## The 4-Call Model
+
+| Method | When to Use |
+|--------|-------------|
+| `init` | Once on app boot |
+| `event` | User interactions, funnel steps |
+| `conversion` | Purchases, signups, any revenue event |
+| `identify` | Login, signup, when you know the user |
+
+## Error Handling
+
+mbuzz never raises exceptions. All methods return `false` on failure and log errors in debug mode.
+
+## Requirements
+
+- Ruby 2.7+
+- Rails 6.0+ (for automatic integration) or any Rack app
+
+## Links
+
+- [Documentation](https://mbuzz.co/docs)
+- [Dashboard](https://mbuzz.co/dashboard)
 
 ## License
 
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+MIT License

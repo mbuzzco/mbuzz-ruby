@@ -50,7 +50,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
     refute_nil cookie_header
-    assert_match(/mbuzz_visitor_id=/, cookie_header)
+    assert_match(/_mbuzz_vid=/, cookie_header)
   end
 
   def test_preserves_existing_visitor_id
@@ -58,7 +58,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     _status, headers, _body = call_result
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
-    assert_match(/mbuzz_visitor_id=existing123/, cookie_header)
+    assert_match(/_mbuzz_vid=existing123/, cookie_header)
   end
 
   def test_extracts_user_id_from_session
@@ -186,7 +186,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     }
 
     cookies = []
-    cookies << "mbuzz_visitor_id=#{@existing_visitor_id}" if @existing_visitor_id
+    cookies << "_mbuzz_vid=#{@existing_visitor_id}" if @existing_visitor_id
     cookies << "_mbuzz_sid=#{@existing_session_id}" if @existing_session_id
     env["HTTP_COOKIE"] = cookies.join("; ") if cookies.any?
 

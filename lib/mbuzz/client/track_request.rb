@@ -3,9 +3,10 @@
 module Mbuzz
   class Client
     class TrackRequest
-      def initialize(user_id, visitor_id, event_type, properties)
+      def initialize(user_id, visitor_id, session_id, event_type, properties)
         @user_id = user_id
         @visitor_id = visitor_id
+        @session_id = session_id
         @event_type = event_type
         @properties = properties
       end
@@ -32,8 +33,14 @@ module Mbuzz
       end
 
       def payload
-        { user_id: @user_id, visitor_id: @visitor_id, event_type: @event_type,
-          properties: @properties, timestamp: Time.now.utc.iso8601 }.compact
+        {
+          user_id: @user_id,
+          visitor_id: @visitor_id,
+          session_id: @session_id,
+          event_type: @event_type,
+          properties: @properties,
+          timestamp: Time.now.utc.iso8601
+        }.compact
       end
 
       def present?(value) = value && !value.to_s.strip.empty?
