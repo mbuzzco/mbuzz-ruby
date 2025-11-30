@@ -72,7 +72,6 @@ mbuzz provides:
 Mbuzz.init(
   api_key: "sk_live_...",             # Required - from mbuzz.co dashboard
   api_url: "https://mbuzz.co/api/v1", # Optional - API endpoint
-  session_timeout: 30,                # Optional - session timeout in minutes
   debug: false                        # Optional - enable debug logging
 )
 ```
