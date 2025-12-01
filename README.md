@@ -72,13 +72,17 @@ mbuzz auto-integrates with Rails via Railtie:
 class ApplicationController < ActionController::Base
   # Access current IDs
   mbuzz_visitor_id   # Returns the visitor ID from cookie
-  mbuzz_user_id      # Returns the user ID (if set)
+  mbuzz_user_id      # Returns user_id from session["user_id"]
   mbuzz_session_id   # Returns the session ID from cookie
-
-  # Track directly from controllers
-  mbuzz_track("page_view", properties: { page: request.path })
-  mbuzz_identify(traits: { email: current_user.email })
 end
+```
+
+**Note:** For tracking and identification, prefer the main API which auto-enriches events with URL/referrer:
+
+```ruby
+# Recommended - use main API in controllers
+Mbuzz.event("page_view", page: request.path)
+Mbuzz.identify(current_user.id, traits: { email: current_user.email })
 ```
 
 ### Context Accessors
@@ -86,9 +90,9 @@ end
 Access IDs from anywhere in your request cycle:
 
 ```ruby
-Mbuzz.visitor_id  # Current visitor ID
-Mbuzz.user_id     # Current user ID (if identified)
-Mbuzz.session_id  # Current session ID
+Mbuzz.visitor_id  # Current visitor ID (from cookie)
+Mbuzz.user_id     # Current user ID (from session["user_id"])
+Mbuzz.session_id  # Current session ID (from cookie)
 ```
 
 ## Rack / Sinatra Integration
