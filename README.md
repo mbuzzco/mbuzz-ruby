@@ -62,9 +62,48 @@ Mbuzz.identify(current_user.id,
 
 ## Rails Integration
 
-mbuzz provides:
+mbuzz auto-integrates with Rails via Railtie:
 - Middleware for visitor and session cookie management
-- `mbuzz_visitor_id` helper in controllers
+- Controller helpers for convenient access
+
+### Controller Helpers
+
+```ruby
+class ApplicationController < ActionController::Base
+  # Access current IDs
+  mbuzz_visitor_id   # Returns the visitor ID from cookie
+  mbuzz_user_id      # Returns the user ID (if set)
+  mbuzz_session_id   # Returns the session ID from cookie
+
+  # Track directly from controllers
+  mbuzz_track("page_view", properties: { page: request.path })
+  mbuzz_identify(traits: { email: current_user.email })
+end
+```
+
+### Context Accessors
+
+Access IDs from anywhere in your request cycle:
+
+```ruby
+Mbuzz.visitor_id  # Current visitor ID
+Mbuzz.user_id     # Current user ID (if identified)
+Mbuzz.session_id  # Current session ID
+```
+
+## Rack / Sinatra Integration
+
+For non-Rails apps, add the middleware manually:
+
+```ruby
+# config.ru or app.rb
+require 'mbuzz'
+
+Mbuzz.init(api_key: ENV['MBUZZ_API_KEY'])
+
+use Mbuzz::Middleware::Tracking
+run MyApp
+```
 
 ## Configuration Options
 
@@ -91,7 +130,7 @@ mbuzz never raises exceptions. All methods return `false` on failure and log err
 
 ## Requirements
 
-- Ruby 2.7+
+- Ruby 3.0+
 - Rails 6.0+ (for automatic integration) or any Rack app
 
 ## Links
