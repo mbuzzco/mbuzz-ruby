@@ -41,11 +41,19 @@ module Mbuzz
   end
 
   # New simplified configuration method (v0.5.0)
-  def self.init(api_key:, api_url: nil, session_timeout: nil, debug: nil)
+  # @param api_key [String] Your mbuzz API key
+  # @param api_url [String, nil] Override API URL (defaults to https://mbuzz.co/api/v1)
+  # @param session_timeout [Integer, nil] Session timeout in seconds
+  # @param debug [Boolean, nil] Enable debug logging
+  # @param skip_paths [Array<String>, nil] Additional paths to skip tracking (e.g., ["/admin", "/internal"])
+  # @param skip_extensions [Array<String>, nil] Additional extensions to skip (e.g., [".pdf"])
+  def self.init(api_key:, api_url: nil, session_timeout: nil, debug: nil, skip_paths: nil, skip_extensions: nil)
     config.api_key = api_key
     config.api_url = api_url if api_url
     config.session_timeout = session_timeout if session_timeout
     config.debug = debug unless debug.nil?
+    config.skip_paths = skip_paths if skip_paths
+    config.skip_extensions = skip_extensions if skip_extensions
     config
   end
 

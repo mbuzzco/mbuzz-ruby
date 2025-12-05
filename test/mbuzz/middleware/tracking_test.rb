@@ -167,6 +167,116 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     end
   end
 
+  # Path filtering tests
+
+  def test_skips_health_check_paths
+    @path_info = "/up"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/health"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/healthz"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/ping"
+    assert @middleware.skip_request?(build_env)
+  end
+
+  def test_skips_asset_paths
+    @path_info = "/assets/application.js"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/packs/bundle.js"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/cable"
+    assert @middleware.skip_request?(build_env)
+  end
+
+  def test_skips_static_asset_extensions
+    @path_info = "/some/file.js"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/some/style.css"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/images/logo.png"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/fonts/roboto.woff2"
+    assert @middleware.skip_request?(build_env)
+  end
+
+  def test_does_not_skip_normal_page_requests
+    @path_info = "/products"
+    refute @middleware.skip_request?(build_env)
+
+    @path_info = "/orders/123"
+    refute @middleware.skip_request?(build_env)
+
+    @path_info = "/"
+    refute @middleware.skip_request?(build_env)
+  end
+
+  def test_skipped_requests_do_not_set_cookies
+    @path_info = "/up"
+
+    _status, headers, _body = @middleware.call(build_env)
+
+    # Headers should not contain mbuzz cookies
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    refute_match(/_mbuzz_vid=/, cookie_header)
+    refute_match(/_mbuzz_sid=/, cookie_header)
+  end
+
+  def test_skipped_requests_do_not_create_sessions
+    @path_info = "/health"
+    session_created = false
+
+    Mbuzz::Client.stub(:session, ->(**args) { session_created = true; true }) do
+      @middleware.call(build_env)
+      sleep 0.1
+    end
+
+    refute session_created, "Session should not be created for health check requests"
+  end
+
+  def test_custom_skip_paths
+    Mbuzz.config.skip_paths = ["/admin", "/internal"]
+
+    @path_info = "/admin/dashboard"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/internal/metrics"
+    assert @middleware.skip_request?(build_env)
+
+    # But normal paths still work
+    @path_info = "/products"
+    refute @middleware.skip_request?(build_env)
+  end
+
+  def test_custom_skip_extensions
+    Mbuzz.config.skip_extensions = [".pdf", ".xml"]
+
+    @path_info = "/documents/report.pdf"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/feeds/sitemap.xml"
+    assert @middleware.skip_request?(build_env)
+  end
+
+  def test_path_filtering_is_case_insensitive
+    @path_info = "/UP"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/HEALTH"
+    assert @middleware.skip_request?(build_env)
+
+    @path_info = "/Assets/Application.JS"
+    assert @middleware.skip_request?(build_env)
+  end
+
   private
 
   def call_result
