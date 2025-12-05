@@ -33,6 +33,10 @@ Track steps in the customer journey:
 Mbuzz.event("page_view", url: request.url)
 Mbuzz.event("add_to_cart", product_id: "SKU-123", price: 49.99)
 Mbuzz.event("checkout_started", cart_total: 99.99)
+
+# Group events into funnels for focused analysis
+Mbuzz.event("signup_start", funnel: "signup", source: "homepage")
+Mbuzz.event("signup_complete", funnel: "signup")
 ```
 
 ### 3. Track Conversions
@@ -42,6 +46,7 @@ Record revenue-generating outcomes:
 ```ruby
 Mbuzz.conversion("purchase",
   revenue: 99.99,
+  funnel: "purchase",  # Optional: group into funnel
   order_id: order.id
 )
 ```
@@ -59,6 +64,27 @@ Mbuzz.identify(current_user.id,
   }
 )
 ```
+
+## Funnels
+
+Group related events into **funnels** for focused conversion analysis in your dashboard.
+
+```ruby
+# Signup funnel
+Mbuzz.event("pricing_view", funnel: "signup")
+Mbuzz.event("signup_start", funnel: "signup")
+Mbuzz.event("signup_complete", funnel: "signup")
+
+# Purchase funnel
+Mbuzz.event("add_to_cart", funnel: "purchase")
+Mbuzz.event("checkout_started", funnel: "purchase")
+Mbuzz.conversion("purchase", funnel: "purchase", revenue: 99.99)
+```
+
+**Why use funnels?**
+- Separate signup flow from purchase flow
+- Analyze each conversion path independently
+- Filter dashboard to specific customer journeys
 
 ## Rails Integration
 

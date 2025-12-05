@@ -12,6 +12,8 @@ module Mbuzz
       end
 
       def call(env)
+        return app.call(env) if skip_request?(env)
+
         @request = Rack::Request.new(env)
 
         env[ENV_VISITOR_ID_KEY] = visitor_id
@@ -26,6 +28,22 @@ module Mbuzz
           set_session_cookie(headers)
           [status, headers, body]
         end
+      end
+
+      # Path filtering - skip health checks, static assets, etc.
+
+      def skip_request?(env)
+        path = env["PATH_INFO"].to_s.downcase
+
+        skip_by_path?(path) || skip_by_extension?(path)
+      end
+
+      def skip_by_path?(path)
+        Mbuzz.config.all_skip_paths.any? { |skip| path.start_with?(skip) }
+      end
+
+      def skip_by_extension?(path)
+        Mbuzz.config.all_skip_extensions.any? { |ext| path.end_with?(ext) }
       end
 
       private

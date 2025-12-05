@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-05
+
+### Added
+
+- **Path filtering in middleware** - Automatically skip tracking for:
+  - Health check endpoints (`/up`, `/health`, `/healthz`, `/ping`)
+  - Asset paths (`/assets`, `/packs`, `/rails/active_storage`)
+  - WebSocket paths (`/cable`)
+  - API paths (`/api`)
+  - Static assets by extension (`.js`, `.css`, `.png`, `.woff2`, etc.)
+- `skip_paths` configuration option - Add custom paths to skip
+- `skip_extensions` configuration option - Add custom extensions to skip
+
+### Fixed
+
+- Health check requests no longer create sessions or consume API quota
+- Static asset requests no longer pollute tracking data
+
+### Usage
+
+```ruby
+Mbuzz.init(
+  api_key: "sk_live_...",
+  skip_paths: ["/admin", "/internal"],      # Optional: additional paths to skip
+  skip_extensions: [".pdf", ".xml"]         # Optional: additional extensions to skip
+)
+```
+
 ## [0.5.0] - 2025-11-29
 
 ### Breaking Changes
