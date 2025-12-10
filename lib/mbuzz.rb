@@ -68,8 +68,13 @@ module Mbuzz
   # ============================================================================
 
   def self.visitor_id
-    RequestContext.current&.request&.env&.dig(ENV_VISITOR_ID_KEY)
+    RequestContext.current&.request&.env&.dig(ENV_VISITOR_ID_KEY) || fallback_visitor_id
   end
+
+  def self.fallback_visitor_id
+    @fallback_visitor_id ||= Visitor::Identifier.generate
+  end
+  private_class_method :fallback_visitor_id
 
   def self.user_id
     RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
