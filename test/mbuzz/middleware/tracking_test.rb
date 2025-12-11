@@ -277,6 +277,132 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert @middleware.skip_request?(build_env)
   end
 
+  # Request isolation tests - visitor/session IDs must not leak across requests
+
+  def test_generates_different_visitor_ids_for_different_requests_without_cookies
+    # First request - no cookies, should generate new visitor_id
+    env1 = build_env_without_cookies
+    _status1, headers1, _body1 = @middleware.call(env1)
+    visitor_id_1 = extract_cookie_value(headers1, "_mbuzz_vid")
+
+    # Second request - no cookies, should generate DIFFERENT visitor_id
+    env2 = build_env_without_cookies
+    _status2, headers2, _body2 = @middleware.call(env2)
+    visitor_id_2 = extract_cookie_value(headers2, "_mbuzz_vid")
+
+    refute_nil visitor_id_1, "First request should generate visitor_id"
+    refute_nil visitor_id_2, "Second request should generate visitor_id"
+    refute_equal visitor_id_1, visitor_id_2, "Different requests without cookies should get different visitor_ids"
+  end
+
+  def test_generates_different_session_ids_for_different_requests_without_cookies
+    # First request - no cookies, should generate new session_id
+    env1 = build_env_without_cookies
+    _status1, headers1, _body1 = @middleware.call(env1)
+    session_id_1 = extract_cookie_value(headers1, "_mbuzz_sid")
+
+    # Second request - no cookies, should generate DIFFERENT session_id
+    env2 = build_env_without_cookies
+    _status2, headers2, _body2 = @middleware.call(env2)
+    session_id_2 = extract_cookie_value(headers2, "_mbuzz_sid")
+
+    refute_nil session_id_1, "First request should generate session_id"
+    refute_nil session_id_2, "Second request should generate session_id"
+    refute_equal session_id_1, session_id_2, "Different requests without cookies should get different session_ids"
+  end
+
+  def test_visitor_id_from_cookie_not_leaked_to_next_request
+    # First request WITH visitor cookie
+    @existing_visitor_id = "user_a_visitor_id"
+    env1 = build_env
+    _status1, headers1, _body1 = @middleware.call(env1)
+    visitor_id_1 = extract_cookie_value(headers1, "_mbuzz_vid")
+
+    # Second request WITHOUT cookies (different user)
+    env2 = build_env_without_cookies
+    _status2, headers2, _body2 = @middleware.call(env2)
+    visitor_id_2 = extract_cookie_value(headers2, "_mbuzz_vid")
+
+    assert_equal "user_a_visitor_id", visitor_id_1
+    refute_equal "user_a_visitor_id", visitor_id_2, "User A's visitor_id should not leak to User B's request"
+  end
+
+  def test_session_id_from_cookie_not_leaked_to_next_request
+    # First request WITH session cookie
+    @existing_session_id = "user_a_session_id"
+    env1 = build_env
+    _status1, headers1, _body1 = @middleware.call(env1)
+    session_id_1 = extract_cookie_value(headers1, "_mbuzz_sid")
+
+    # Reset for second request
+    @existing_session_id = nil
+
+    # Second request WITHOUT cookies (different user)
+    env2 = build_env_without_cookies
+    _status2, headers2, _body2 = @middleware.call(env2)
+    session_id_2 = extract_cookie_value(headers2, "_mbuzz_sid")
+
+    assert_equal "user_a_session_id", session_id_1
+    refute_equal "user_a_session_id", session_id_2, "User A's session_id should not leak to User B's request"
+  end
+
+  def test_env_visitor_id_isolated_between_requests
+    captured_visitor_ids = []
+
+    @app = ->(env) {
+      captured_visitor_ids << env["mbuzz.visitor_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Two requests without cookies
+    @middleware.call(build_env_without_cookies)
+    @middleware.call(build_env_without_cookies)
+
+    assert_equal 2, captured_visitor_ids.length
+    refute_equal captured_visitor_ids[0], captured_visitor_ids[1],
+      "env['mbuzz.visitor_id'] should be different for each request without cookies"
+  end
+
+  def test_env_session_id_isolated_between_requests
+    captured_session_ids = []
+
+    @app = ->(env) {
+      captured_session_ids << env["mbuzz.session_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Two requests without cookies
+    @middleware.call(build_env_without_cookies)
+    @middleware.call(build_env_without_cookies)
+
+    assert_equal 2, captured_session_ids.length
+    refute_equal captured_session_ids[0], captured_session_ids[1],
+      "env['mbuzz.session_id'] should be different for each request without cookies"
+  end
+
+  private
+
+  def build_env_without_cookies
+    {
+      "REQUEST_METHOD" => "GET",
+      "PATH_INFO" => "/products",
+      "QUERY_STRING" => "",
+      "HTTP_REFERER" => "https://google.com",
+      "HTTP_USER_AGENT" => "Mozilla/5.0",
+      "rack.url_scheme" => "https",
+      "HTTP_HOST" => "example.com",
+      "rack.session" => {}
+    }
+  end
+
+  def extract_cookie_value(headers, cookie_name)
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    match = cookie_header.match(/#{cookie_name}=([^;]+)/)
+    match ? match[1] : nil
+  end
+
   private
 
   def call_result
