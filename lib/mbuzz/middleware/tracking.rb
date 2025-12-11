@@ -14,6 +14,7 @@ module Mbuzz
       def call(env)
         return app.call(env) if skip_request?(env)
 
+        reset_request_state!
         @request = Rack::Request.new(env)
 
         env[ENV_VISITOR_ID_KEY] = visitor_id
@@ -47,6 +48,13 @@ module Mbuzz
       end
 
       private
+
+      def reset_request_state!
+        @request = nil
+        @visitor_id = nil
+        @session_id = nil
+        @user_id = nil
+      end
 
       def visitor_id
         @visitor_id ||= visitor_id_from_cookie || Visitor::Identifier.generate
