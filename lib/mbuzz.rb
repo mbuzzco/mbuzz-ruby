@@ -117,17 +117,29 @@ module Mbuzz
   #
   # @param conversion_type [String] The type of conversion
   # @param revenue [Numeric, nil] Revenue amount
+  # @param user_id [String, nil] User ID for acquisition-linked conversions
+  # @param is_acquisition [Boolean] Mark this as the acquisition conversion for this user
+  # @param inherit_acquisition [Boolean] Inherit attribution from user's acquisition conversion
   # @param properties [Hash] Custom properties
   # @return [Hash, false] Result hash on success, false on failure
   #
-  # @example
+  # @example Basic conversion
   #   Mbuzz.conversion("purchase", revenue: 99.99, order_id: "ORD-123")
   #
-  def self.conversion(conversion_type, revenue: nil, **properties)
+  # @example Acquisition conversion (marks signup as THE acquisition moment)
+  #   Mbuzz.conversion("signup", user_id: "user_123", is_acquisition: true)
+  #
+  # @example Recurring revenue (inherits attribution from acquisition)
+  #   Mbuzz.conversion("payment", user_id: "user_123", revenue: 49.00, inherit_acquisition: true)
+  #
+  def self.conversion(conversion_type, revenue: nil, user_id: nil, is_acquisition: false, inherit_acquisition: false, **properties)
     Client.conversion(
       visitor_id: visitor_id,
+      user_id: user_id,
       conversion_type: conversion_type,
       revenue: revenue,
+      is_acquisition: is_acquisition,
+      inherit_acquisition: inherit_acquisition,
       properties: enriched_properties(properties)
     )
   end

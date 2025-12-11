@@ -256,6 +256,51 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  # Acquisition attribution tests
+
+  def test_conversion_accepts_user_id
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        user_id: "user_123",
+        conversion_type: "signup"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_accepts_is_acquisition
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        user_id: "user_123",
+        conversion_type: "signup",
+        is_acquisition: true
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_accepts_inherit_acquisition
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        user_id: "user_123",
+        conversion_type: "payment",
+        revenue: 49.00,
+        inherit_acquisition: true
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_conversion_user_id_satisfies_identifier_requirement
+    stub_conversion_success do
+      result = Mbuzz::Client.conversion(
+        user_id: "user_123",
+        conversion_type: "signup"
+      )
+      assert result[:success]
+    end
+  end
+
   def test_conversion_still_truthy_for_boolean_checks
     stub_conversion_success do
       result = Mbuzz::Client.conversion(

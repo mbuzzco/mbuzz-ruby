@@ -3,12 +3,15 @@
 module Mbuzz
   class Client
     class ConversionRequest
-      def initialize(event_id, visitor_id, conversion_type, revenue, currency, properties)
+      def initialize(event_id:, visitor_id:, user_id:, conversion_type:, revenue:, currency:, is_acquisition:, inherit_acquisition:, properties:)
         @event_id = event_id
         @visitor_id = visitor_id
+        @user_id = user_id
         @conversion_type = conversion_type
         @revenue = revenue
         @currency = currency
+        @is_acquisition = is_acquisition
+        @inherit_acquisition = inherit_acquisition
         @properties = properties
       end
 
@@ -25,7 +28,7 @@ module Mbuzz
       end
 
       def has_identifier?
-        present?(@event_id) || present?(@visitor_id)
+        present?(@event_id) || present?(@visitor_id) || present?(@user_id)
       end
 
       def conversion_id
@@ -46,9 +49,8 @@ module Mbuzz
 
       def conversion_payload
         base_payload
-          .tap { |p| p[:event_id] = @event_id if @event_id }
-          .tap { |p| p[:visitor_id] = @visitor_id if @visitor_id }
-          .tap { |p| p[:revenue] = @revenue if @revenue }
+          .merge(optional_identifiers)
+          .merge(optional_acquisition_fields)
       end
 
       def base_payload
@@ -58,6 +60,22 @@ module Mbuzz
           properties: @properties,
           timestamp: Time.now.utc.iso8601
         }
+      end
+
+      def optional_identifiers
+        {}.tap do |h|
+          h[:event_id] = @event_id if @event_id
+          h[:visitor_id] = @visitor_id if @visitor_id
+          h[:user_id] = @user_id if @user_id
+          h[:revenue] = @revenue if @revenue
+        end
+      end
+
+      def optional_acquisition_fields
+        {}.tap do |h|
+          h[:is_acquisition] = @is_acquisition if @is_acquisition
+          h[:inherit_acquisition] = @inherit_acquisition if @inherit_acquisition
+        end
       end
 
       def present?(value) = value && !value.to_s.strip.empty?

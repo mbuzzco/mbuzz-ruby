@@ -15,8 +15,18 @@ module Mbuzz
       IdentifyRequest.new(user_id, visitor_id, traits).call
     end
 
-    def self.conversion(event_id: nil, visitor_id: nil, conversion_type:, revenue: nil, currency: "USD", properties: {})
-      ConversionRequest.new(event_id, visitor_id, conversion_type, revenue, currency, properties).call
+    def self.conversion(event_id: nil, visitor_id: nil, user_id: nil, conversion_type:, revenue: nil, currency: "USD", is_acquisition: false, inherit_acquisition: false, properties: {})
+      ConversionRequest.new(
+        event_id: event_id,
+        visitor_id: visitor_id,
+        user_id: user_id,
+        conversion_type: conversion_type,
+        revenue: revenue,
+        currency: currency,
+        is_acquisition: is_acquisition,
+        inherit_acquisition: inherit_acquisition,
+        properties: properties
+      ).call
     end
 
     def self.session(visitor_id:, session_id:, url:, referrer: nil, started_at: nil)
