@@ -382,6 +382,158 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "env['mbuzz.session_id'] should be different for each request without cookies"
   end
 
+  # Thread-safety tests - middleware must handle concurrent requests correctly
+
+  def test_concurrent_requests_get_isolated_session_ids
+    captured_data = Queue.new
+    barrier = Queue.new
+
+    # App that captures session_id and waits for signal
+    @app = ->(env) {
+      session_id = env["mbuzz.session_id"]
+      captured_data << { session_id: session_id, thread: Thread.current.object_id }
+      barrier.pop # Wait for signal to continue
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Start two concurrent requests
+    threads = 2.times.map do
+      Thread.new { @middleware.call(build_env_without_cookies) }
+    end
+
+    # Wait for both threads to capture their session_ids
+    sleep 0.1
+
+    # Release both threads
+    2.times { barrier << :go }
+
+    # Wait for threads to complete
+    threads.each(&:join)
+
+    # Collect results
+    results = []
+    results << captured_data.pop until captured_data.empty?
+
+    assert_equal 2, results.length, "Both requests should complete"
+
+    session_ids = results.map { |r| r[:session_id] }
+    assert_equal 2, session_ids.uniq.length,
+      "Concurrent requests should get different session_ids, got: #{session_ids.inspect}"
+  end
+
+  def test_concurrent_requests_get_isolated_visitor_ids
+    captured_data = Queue.new
+    barrier = Queue.new
+
+    @app = ->(env) {
+      visitor_id = env["mbuzz.visitor_id"]
+      captured_data << { visitor_id: visitor_id, thread: Thread.current.object_id }
+      barrier.pop
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    threads = 2.times.map do
+      Thread.new { @middleware.call(build_env_without_cookies) }
+    end
+
+    sleep 0.1
+    2.times { barrier << :go }
+    threads.each(&:join)
+
+    results = []
+    results << captured_data.pop until captured_data.empty?
+
+    assert_equal 2, results.length
+    visitor_ids = results.map { |r| r[:visitor_id] }
+    assert_equal 2, visitor_ids.uniq.length,
+      "Concurrent requests should get different visitor_ids, got: #{visitor_ids.inspect}"
+  end
+
+  def test_concurrent_requests_set_correct_cookies
+    results = Queue.new
+
+    @app = ->(env) { [200, {}, ["OK"]] }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    threads = 10.times.map do
+      Thread.new do
+        env = build_env_without_cookies
+        _status, headers, _body = @middleware.call(env)
+
+        session_id_in_env = env["mbuzz.session_id"]
+        session_id_in_cookie = extract_cookie_value(headers, "_mbuzz_sid")
+
+        results << {
+          env_session_id: session_id_in_env,
+          cookie_session_id: session_id_in_cookie,
+          match: session_id_in_env == session_id_in_cookie
+        }
+      end
+    end
+
+    threads.each(&:join)
+
+    all_results = []
+    all_results << results.pop until results.empty?
+
+    mismatches = all_results.reject { |r| r[:match] }
+    assert mismatches.empty?,
+      "All requests should have matching env and cookie session_ids. Mismatches: #{mismatches.inspect}"
+
+    # Also verify all session_ids are unique
+    session_ids = all_results.map { |r| r[:env_session_id] }
+    assert_equal 10, session_ids.uniq.length,
+      "All 10 concurrent requests should get unique session_ids"
+  end
+
+  def test_race_condition_with_slow_app
+    # This test forces the race condition by adding delays
+    results = Queue.new
+
+    @app = ->(env) {
+      # Small delay to increase chance of interleaving
+      sleep 0.01
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Run 50 concurrent requests to maximize race condition probability
+    threads = 50.times.map do
+      Thread.new do
+        env = build_env_without_cookies
+        _status, headers, _body = @middleware.call(env)
+
+        session_id_in_env = env["mbuzz.session_id"]
+        session_id_in_cookie = extract_cookie_value(headers, "_mbuzz_sid")
+
+        results << {
+          env_session_id: session_id_in_env,
+          cookie_session_id: session_id_in_cookie,
+          match: session_id_in_env == session_id_in_cookie
+        }
+      end
+    end
+
+    threads.each(&:join)
+
+    all_results = []
+    all_results << results.pop until results.empty?
+
+    # Check for cookie/env mismatches (the actual bug)
+    mismatches = all_results.reject { |r| r[:match] }
+    assert mismatches.empty?,
+      "Race condition detected! #{mismatches.length}/#{all_results.length} requests had mismatched session_ids. " \
+      "This means the cookie set doesn't match the env session_id."
+
+    # Check for duplicate session_ids (another symptom of the bug)
+    session_ids = all_results.map { |r| r[:env_session_id] }
+    duplicates = session_ids.group_by(&:itself).select { |_, v| v.size > 1 }
+    assert duplicates.empty?,
+      "Race condition detected! Some requests got the same session_id: #{duplicates.keys.inspect}"
+  end
+
   private
 
   def build_env_without_cookies

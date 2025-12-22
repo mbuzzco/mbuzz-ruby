@@ -5,28 +5,25 @@ require "rack"
 module Mbuzz
   module Middleware
     class Tracking
-      attr_reader :app, :request
-
       def initialize(app)
         @app = app
       end
 
       def call(env)
-        return app.call(env) if skip_request?(env)
+        return @app.call(env) if skip_request?(env)
 
-        reset_request_state!
-        @request = Rack::Request.new(env)
+        request = Rack::Request.new(env)
+        context = build_request_context(request)
 
-        env[ENV_VISITOR_ID_KEY] = visitor_id
-        env[ENV_USER_ID_KEY] = user_id
-        env[ENV_SESSION_ID_KEY] = session_id
+        env[ENV_VISITOR_ID_KEY] = context[:visitor_id]
+        env[ENV_USER_ID_KEY] = context[:user_id]
+        env[ENV_SESSION_ID_KEY] = context[:session_id]
 
         RequestContext.with_context(request: request) do
-          create_session_if_new
+          create_session_if_new(context, request)
 
-          status, headers, body = app.call(env)
-          set_visitor_cookie(headers)
-          set_session_cookie(headers)
+          status, headers, body = @app.call(env)
+          set_cookies(headers, context, request)
           [status, headers, body]
         end
       end
@@ -49,76 +46,64 @@ module Mbuzz
 
       private
 
-      def reset_request_state!
-        @request = nil
-        @visitor_id = nil
-        @session_id = nil
-        @user_id = nil
+      # Build all request-specific context as a frozen hash
+      # This ensures thread-safety by using local variables only
+      def build_request_context(request)
+        visitor_id = visitor_id_from_cookie(request) || Visitor::Identifier.generate
+        session_id = session_id_from_cookie(request) || generate_session_id
+        user_id = user_id_from_session(request)
+        new_session = session_id_from_cookie(request).nil?
+
+        {
+          visitor_id: visitor_id,
+          session_id: session_id,
+          user_id: user_id,
+          new_session: new_session
+        }.freeze
       end
 
-      def visitor_id
-        @visitor_id ||= visitor_id_from_cookie || Visitor::Identifier.generate
-      end
-
-      def visitor_id_from_cookie
+      def visitor_id_from_cookie(request)
         request.cookies[VISITOR_COOKIE_NAME]
       end
 
-      def user_id
-        @user_id ||= user_id_from_session
-      end
-
-      def user_id_from_session
-        request.session[SESSION_USER_ID_KEY] if request.session
-      end
-
-      def set_visitor_cookie(headers)
-        Rack::Utils.set_cookie_header!(headers, VISITOR_COOKIE_NAME, visitor_cookie_options)
-      end
-
-      def visitor_cookie_options
-        base_cookie_options.merge(
-          value: visitor_id,
-          max_age: VISITOR_COOKIE_MAX_AGE
-        )
-      end
-
-      # Session ID management
-
-      def session_id
-        @session_id ||= session_id_from_cookie || generate_session_id
-      end
-
-      def session_id_from_cookie
+      def session_id_from_cookie(request)
         request.cookies[SESSION_COOKIE_NAME]
+      end
+
+      def user_id_from_session(request)
+        request.session[SESSION_USER_ID_KEY] if request.session
       end
 
       def generate_session_id
         SecureRandom.hex(32)
       end
 
-      def new_session?
-        session_id_from_cookie.nil?
-      end
-
       # Session creation
 
-      def create_session_if_new
-        return unless new_session?
+      def create_session_if_new(context, request)
+        return unless context[:new_session]
 
-        create_session_async
+        create_session_async(context, request)
       end
 
-      def create_session_async
-        Thread.new { create_session }
+      def create_session_async(context, request)
+        # Capture values in local variables for thread safety
+        visitor_id = context[:visitor_id]
+        session_id = context[:session_id]
+        url = request.url
+        referrer = request.referer
+
+        Thread.new do
+          create_session(visitor_id, session_id, url, referrer)
+        end
       end
 
-      def create_session
+      def create_session(visitor_id, session_id, url, referrer)
         Client.session(
           visitor_id: visitor_id,
           session_id: session_id,
-          url: request.url,
-          referrer: request.referer
+          url: url,
+          referrer: referrer
         )
       rescue => e
         log_session_error(e)
@@ -128,22 +113,44 @@ module Mbuzz
         Mbuzz.config.logger&.error("Session creation failed: #{error.message}")
       end
 
-      # Session cookie
+      # Cookie setting
 
-      def set_session_cookie(headers)
-        Rack::Utils.set_cookie_header!(headers, SESSION_COOKIE_NAME, session_cookie_options)
+      def set_cookies(headers, context, request)
+        set_visitor_cookie(headers, context, request)
+        set_session_cookie(headers, context, request)
       end
 
-      def session_cookie_options
-        base_cookie_options.merge(
-          value: session_id,
+      def set_visitor_cookie(headers, context, request)
+        Rack::Utils.set_cookie_header!(
+          headers,
+          VISITOR_COOKIE_NAME,
+          visitor_cookie_options(context, request)
+        )
+      end
+
+      def set_session_cookie(headers, context, request)
+        Rack::Utils.set_cookie_header!(
+          headers,
+          SESSION_COOKIE_NAME,
+          session_cookie_options(context, request)
+        )
+      end
+
+      def visitor_cookie_options(context, request)
+        base_cookie_options(request).merge(
+          value: context[:visitor_id],
+          max_age: VISITOR_COOKIE_MAX_AGE
+        )
+      end
+
+      def session_cookie_options(context, request)
+        base_cookie_options(request).merge(
+          value: context[:session_id],
           max_age: SESSION_COOKIE_MAX_AGE
         )
       end
 
-      # Shared cookie options
-
-      def base_cookie_options
+      def base_cookie_options(request)
         options = {
           path: VISITOR_COOKIE_PATH,
           httponly: true,
