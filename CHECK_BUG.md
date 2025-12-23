@@ -86,9 +86,29 @@ end
 | SDK | Location | Status | Reviewed By | Date |
 |-----|----------|--------|-------------|------|
 | mbuzz-ruby | `/Users/vlad/code/m/mbuzz-ruby` | FIXED | Claude | 2025-12-22 |
-| mbuzz-python | `/Users/vlad/code/m/mbuzz-python` | TODO | | |
-| mbuzz-php | `/Users/vlad/code/m/mbuzz-php` | TODO | | |
-| mbuzz-node | (check if exists) | TODO | | |
+| mbuzz-python | `/Users/vlad/code/m/mbuzz-python` | SAFE | Claude | 2025-12-22 |
+| mbuzz-php | `/Users/vlad/code/m/mbuzz-php` | SAFE | Claude | 2025-12-22 |
+| mbuzz-node | `/Users/vlad/code/m/mbuzz-node` | SAFE | Claude | 2025-12-22 |
+
+### Review Results:
+
+**mbuzz-python**: SAFE
+- Uses `contextvars.ContextVar` for thread-safe context storage
+- Uses Flask's `g` object for request-scoped storage
+- Local variables used throughout middleware
+- Async session creation captures values in local variables before spawning thread
+
+**mbuzz-php**: SAFE
+- PHP is single-process per request by default
+- No shared state between requests
+- Each request gets fresh instance of everything
+
+**mbuzz-node**: SAFE
+- Uses `AsyncLocalStorage` from `node:async_hooks` for async request isolation
+- Express middleware uses local variables (`visitor`, `session`, `secure`)
+- Attaches data to request-scoped `req.mbuzz` object
+- `createSessionAsync` captures values as function parameters before `setImmediate`
+- Node.js is single-threaded, so race conditions are inherently less likely
 
 ### What to Look For:
 
