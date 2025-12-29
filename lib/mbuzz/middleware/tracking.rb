@@ -49,17 +49,20 @@ module Mbuzz
       # Build all request-specific context as a frozen hash
       # This ensures thread-safety by using local variables only
       def build_request_context(request)
-        visitor_id = visitor_id_from_cookie(request) || Visitor::Identifier.generate
-        session_id = session_id_from_cookie(request) || generate_session_id
-        user_id = user_id_from_session(request)
-        new_session = session_id_from_cookie(request).nil?
-
         {
-          visitor_id: visitor_id,
-          session_id: session_id,
-          user_id: user_id,
-          new_session: new_session
+          visitor_id: resolve_visitor_id(request),
+          session_id: resolve_session_id(request),
+          user_id: user_id_from_session(request),
+          new_session: new_session?(request)
         }.freeze
+      end
+
+      def resolve_visitor_id(request)
+        visitor_id_from_cookie(request) || Visitor::Identifier.generate
+      end
+
+      def resolve_session_id(request)
+        session_id_from_cookie(request) || generate_session_id(request)
       end
 
       def visitor_id_from_cookie(request)
@@ -74,8 +77,32 @@ module Mbuzz
         request.session[SESSION_USER_ID_KEY] if request.session
       end
 
-      def generate_session_id
-        SecureRandom.hex(32)
+      def new_session?(request)
+        session_id_from_cookie(request).nil?
+      end
+
+      def generate_session_id(request)
+        existing_visitor_id = visitor_id_from_cookie(request)
+
+        if existing_visitor_id
+          Session::IdGenerator.generate_deterministic(visitor_id: existing_visitor_id)
+        else
+          Session::IdGenerator.generate_from_fingerprint(
+            client_ip: client_ip(request),
+            user_agent: user_agent(request)
+          )
+        end
+      end
+
+      def client_ip(request)
+        request.env["HTTP_X_FORWARDED_FOR"]&.split(",")&.first&.strip ||
+          request.env["HTTP_X_REAL_IP"] ||
+          request.ip ||
+          "unknown"
+      end
+
+      def user_agent(request)
+        request.user_agent || "unknown"
       end
 
       # Session creation

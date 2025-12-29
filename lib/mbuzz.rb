@@ -3,6 +3,7 @@
 require_relative "mbuzz/version"
 require_relative "mbuzz/configuration"
 require_relative "mbuzz/visitor/identifier"
+require_relative "mbuzz/session/id_generator"
 require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
 require_relative "mbuzz/client"

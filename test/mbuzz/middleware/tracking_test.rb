@@ -295,20 +295,34 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     refute_equal visitor_id_1, visitor_id_2, "Different requests without cookies should get different visitor_ids"
   end
 
-  def test_generates_different_session_ids_for_different_requests_without_cookies
-    # First request - no cookies, should generate new session_id
+  def test_same_fingerprint_gets_same_session_id
+    # Deterministic session IDs: same IP+UA in same time bucket = same session ID
     env1 = build_env_without_cookies
     _status1, headers1, _body1 = @middleware.call(env1)
     session_id_1 = extract_cookie_value(headers1, "_mbuzz_sid")
 
-    # Second request - no cookies, should generate DIFFERENT session_id
     env2 = build_env_without_cookies
     _status2, headers2, _body2 = @middleware.call(env2)
     session_id_2 = extract_cookie_value(headers2, "_mbuzz_sid")
 
     refute_nil session_id_1, "First request should generate session_id"
     refute_nil session_id_2, "Second request should generate session_id"
-    refute_equal session_id_1, session_id_2, "Different requests without cookies should get different session_ids"
+    assert_equal session_id_1, session_id_2, "Same fingerprint should get same session_id"
+  end
+
+  def test_different_user_agents_get_different_session_ids
+    # Different fingerprints should get different session IDs
+    env1 = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Mozilla/5.0 Chrome")
+    _status1, headers1, _body1 = @middleware.call(env1)
+    session_id_1 = extract_cookie_value(headers1, "_mbuzz_sid")
+
+    env2 = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Mozilla/5.0 Safari")
+    _status2, headers2, _body2 = @middleware.call(env2)
+    session_id_2 = extract_cookie_value(headers2, "_mbuzz_sid")
+
+    refute_nil session_id_1
+    refute_nil session_id_2
+    refute_equal session_id_1, session_id_2, "Different user agents should get different session_ids"
   end
 
   def test_visitor_id_from_cookie_not_leaked_to_next_request
@@ -337,8 +351,8 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     # Reset for second request
     @existing_session_id = nil
 
-    # Second request WITHOUT cookies (different user)
-    env2 = build_env_without_cookies
+    # Second request WITHOUT cookies but DIFFERENT fingerprint
+    env2 = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Different Browser")
     _status2, headers2, _body2 = @middleware.call(env2)
     session_id_2 = extract_cookie_value(headers2, "_mbuzz_sid")
 
@@ -364,7 +378,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "env['mbuzz.visitor_id'] should be different for each request without cookies"
   end
 
-  def test_env_session_id_isolated_between_requests
+  def test_env_session_id_deterministic_for_same_fingerprint
     captured_session_ids = []
 
     @app = ->(env) {
@@ -373,18 +387,37 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     }
     @middleware = Mbuzz::Middleware::Tracking.new(@app)
 
-    # Two requests without cookies
+    # Two requests without cookies but same fingerprint
     @middleware.call(build_env_without_cookies)
     @middleware.call(build_env_without_cookies)
 
     assert_equal 2, captured_session_ids.length
+    assert_equal captured_session_ids[0], captured_session_ids[1],
+      "env['mbuzz.session_id'] should be same for requests with same fingerprint"
+  end
+
+  def test_env_session_id_different_for_different_fingerprints
+    captured_session_ids = []
+
+    @app = ->(env) {
+      captured_session_ids << env["mbuzz.session_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Two requests with different user agents
+    @middleware.call(build_env_without_cookies.merge("HTTP_USER_AGENT" => "Chrome"))
+    @middleware.call(build_env_without_cookies.merge("HTTP_USER_AGENT" => "Safari"))
+
+    assert_equal 2, captured_session_ids.length
     refute_equal captured_session_ids[0], captured_session_ids[1],
-      "env['mbuzz.session_id'] should be different for each request without cookies"
+      "env['mbuzz.session_id'] should be different for different fingerprints"
   end
 
   # Thread-safety tests - middleware must handle concurrent requests correctly
+  # With deterministic session IDs, same fingerprint = same session ID
 
-  def test_concurrent_requests_get_isolated_session_ids
+  def test_concurrent_requests_same_fingerprint_get_same_session_id
     captured_data = Queue.new
     barrier = Queue.new
 
@@ -397,7 +430,7 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     }
     @middleware = Mbuzz::Middleware::Tracking.new(@app)
 
-    # Start two concurrent requests
+    # Start two concurrent requests with SAME fingerprint
     threads = 2.times.map do
       Thread.new { @middleware.call(build_env_without_cookies) }
     end
@@ -418,8 +451,41 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert_equal 2, results.length, "Both requests should complete"
 
     session_ids = results.map { |r| r[:session_id] }
+    assert_equal 1, session_ids.uniq.length,
+      "Concurrent requests with same fingerprint should get SAME session_id (this is the fix!)"
+  end
+
+  def test_concurrent_requests_different_fingerprints_get_different_session_ids
+    captured_data = Queue.new
+    barrier = Queue.new
+
+    @app = ->(env) {
+      session_id = env["mbuzz.session_id"]
+      captured_data << { session_id: session_id, user_agent: env["HTTP_USER_AGENT"] }
+      barrier.pop
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Start concurrent requests with DIFFERENT fingerprints
+    threads = 2.times.map do |i|
+      Thread.new do
+        env = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Browser#{i}")
+        @middleware.call(env)
+      end
+    end
+
+    sleep 0.1
+    2.times { barrier << :go }
+    threads.each(&:join)
+
+    results = []
+    results << captured_data.pop until captured_data.empty?
+
+    assert_equal 2, results.length
+    session_ids = results.map { |r| r[:session_id] }
     assert_equal 2, session_ids.uniq.length,
-      "Concurrent requests should get different session_ids, got: #{session_ids.inspect}"
+      "Concurrent requests with different fingerprints should get different session_ids"
   end
 
   def test_concurrent_requests_get_isolated_visitor_ids
@@ -457,9 +523,10 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     @app = ->(env) { [200, {}, ["OK"]] }
     @middleware = Mbuzz::Middleware::Tracking.new(@app)
 
-    threads = 10.times.map do
+    # 10 concurrent requests with DIFFERENT fingerprints
+    threads = 10.times.map do |i|
       Thread.new do
-        env = build_env_without_cookies
+        env = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Browser#{i}")
         _status, headers, _body = @middleware.call(env)
 
         session_id_in_env = env["mbuzz.session_id"]
@@ -482,24 +549,24 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert mismatches.empty?,
       "All requests should have matching env and cookie session_ids. Mismatches: #{mismatches.inspect}"
 
-    # Also verify all session_ids are unique
+    # Verify all session_ids are unique (different fingerprints)
     session_ids = all_results.map { |r| r[:env_session_id] }
     assert_equal 10, session_ids.uniq.length,
-      "All 10 concurrent requests should get unique session_ids"
+      "All 10 concurrent requests with different fingerprints should get unique session_ids"
   end
 
-  def test_race_condition_with_slow_app
-    # This test forces the race condition by adding delays
+  def test_deterministic_ids_fix_race_condition
+    # This test verifies that concurrent requests from SAME client get SAME session
+    # This is the core fix for the race condition bug
     results = Queue.new
 
     @app = ->(env) {
-      # Small delay to increase chance of interleaving
-      sleep 0.01
+      sleep 0.01 # Small delay to increase interleaving
       [200, {}, ["OK"]]
     }
     @middleware = Mbuzz::Middleware::Tracking.new(@app)
 
-    # Run 50 concurrent requests to maximize race condition probability
+    # Run 50 concurrent requests with SAME fingerprint (simulating race condition)
     threads = 50.times.map do
       Thread.new do
         env = build_env_without_cookies
@@ -521,17 +588,15 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     all_results = []
     all_results << results.pop until results.empty?
 
-    # Check for cookie/env mismatches (the actual bug)
+    # All env and cookie session_ids should match
     mismatches = all_results.reject { |r| r[:match] }
     assert mismatches.empty?,
-      "Race condition detected! #{mismatches.length}/#{all_results.length} requests had mismatched session_ids. " \
-      "This means the cookie set doesn't match the env session_id."
+      "All requests should have matching env and cookie session_ids"
 
-    # Check for duplicate session_ids (another symptom of the bug)
+    # With deterministic IDs, all 50 requests should get THE SAME session_id!
     session_ids = all_results.map { |r| r[:env_session_id] }
-    duplicates = session_ids.group_by(&:itself).select { |_, v| v.size > 1 }
-    assert duplicates.empty?,
-      "Race condition detected! Some requests got the same session_id: #{duplicates.keys.inspect}"
+    assert_equal 1, session_ids.uniq.length,
+      "All 50 concurrent requests from same fingerprint should get SAME session_id (race condition fix!)"
   end
 
   private
