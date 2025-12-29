@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2025-12-30
+
+### Added
+
+- **Server-side session resolution support** - SDK now forwards `ip` and `user_agent` to the API for server-side session identification
+- `ip` and `user_agent` parameters on `Mbuzz::Client.track()`
+- `RequestContext#ip` method with proxy header support (X-Forwarded-For, X-Real-IP)
+- `Mbuzz.event` automatically extracts and forwards ip/user_agent from request context
+
+### Technical Details
+
+- IP extraction priority: `X-Forwarded-For` (first IP) > `X-Real-IP` > direct IP
+- Enables accurate session tracking without client-side cookies
+- Backwards compatible - ip/user_agent are optional parameters
+
 ## [0.6.0] - 2025-12-05
 
 ### Added

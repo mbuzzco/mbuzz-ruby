@@ -33,6 +33,12 @@ module Mbuzz
       @request.user_agent
     end
 
+    def ip
+      @request.env["HTTP_X_FORWARDED_FOR"]&.split(",")&.first&.strip ||
+        @request.env["HTTP_X_REAL_IP"] ||
+        @request.ip
+    end
+
     def enriched_properties(custom = {})
       { url: url, referrer: referrer }.compact.merge(custom)
     end

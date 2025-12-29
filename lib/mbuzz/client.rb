@@ -7,8 +7,8 @@ require_relative "client/session_request"
 
 module Mbuzz
   class Client
-    def self.track(user_id: nil, visitor_id: nil, session_id: nil, event_type:, properties: {})
-      TrackRequest.new(user_id, visitor_id, session_id, event_type, properties).call
+    def self.track(user_id: nil, visitor_id: nil, session_id: nil, event_type:, properties: {}, ip: nil, user_agent: nil)
+      TrackRequest.new(user_id, visitor_id, session_id, event_type, properties, ip, user_agent).call
     end
 
     def self.identify(user_id:, visitor_id: nil, traits: {})

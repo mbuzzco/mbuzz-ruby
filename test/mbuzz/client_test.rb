@@ -76,6 +76,59 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  # Server-side session resolution tests (v1.3.0+)
+
+  def test_track_accepts_ip_parameter
+    stub_api_success_with_event do
+      result = Mbuzz::Client.track(
+        visitor_id: "visitor123",
+        event_type: "page_view",
+        properties: {},
+        ip: "192.168.1.100"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_track_accepts_user_agent_parameter
+    stub_api_success_with_event do
+      result = Mbuzz::Client.track(
+        visitor_id: "visitor123",
+        event_type: "page_view",
+        properties: {},
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_track_accepts_both_ip_and_user_agent
+    stub_api_success_with_event do
+      result = Mbuzz::Client.track(
+        visitor_id: "visitor123",
+        event_type: "page_view",
+        properties: {},
+        ip: "192.168.1.100",
+        user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+      )
+      assert result[:success]
+    end
+  end
+
+  def test_track_works_without_session_id_when_ip_and_user_agent_provided
+    stub_api_success_with_event do
+      result = Mbuzz::Client.track(
+        visitor_id: "visitor123",
+        event_type: "page_view",
+        properties: {},
+        ip: "192.168.1.100",
+        user_agent: "Mozilla/5.0"
+        # No session_id - server will resolve it
+      )
+      assert result[:success]
+    end
+  end
+
   # Identify tests
   def test_identify_returns_true_on_success
     stub_api_success do

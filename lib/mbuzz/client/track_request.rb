@@ -3,12 +3,14 @@
 module Mbuzz
   class Client
     class TrackRequest
-      def initialize(user_id, visitor_id, session_id, event_type, properties)
+      def initialize(user_id, visitor_id, session_id, event_type, properties, ip = nil, user_agent = nil)
         @user_id = user_id
         @visitor_id = visitor_id
         @session_id = session_id
         @event_type = event_type
         @properties = properties
+        @ip = ip
+        @user_agent = user_agent
       end
 
       def call
@@ -39,6 +41,8 @@ module Mbuzz
           session_id: @session_id,
           event_type: @event_type,
           properties: @properties,
+          ip: @ip,
+          user_agent: @user_agent,
           timestamp: Time.now.utc.iso8601
         }.compact
       end

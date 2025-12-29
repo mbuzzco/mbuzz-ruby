@@ -104,7 +104,9 @@ module Mbuzz
       session_id: session_id,
       user_id: user_id,
       event_type: event_type,
-      properties: enriched_properties(properties)
+      properties: enriched_properties(properties),
+      ip: current_ip,
+      user_agent: current_user_agent
     )
   end
 
@@ -176,4 +178,14 @@ module Mbuzz
     RequestContext.current.enriched_properties(custom_properties)
   end
   private_class_method :enriched_properties
+
+  def self.current_ip
+    RequestContext.current&.ip
+  end
+  private_class_method :current_ip
+
+  def self.current_user_agent
+    RequestContext.current&.user_agent
+  end
+  private_class_method :current_user_agent
 end
