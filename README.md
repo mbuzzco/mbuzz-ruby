@@ -121,6 +121,63 @@ Mbuzz.user_id     # Current user ID (from session["user_id"])
 Mbuzz.session_id  # Current session ID (from cookie)
 ```
 
+## Background Jobs
+
+When tracking from background jobs (Sidekiq, GoodJob, etc.), there's no HTTP request context. Rails 7+ handles this automatically via `CurrentAttributes`.
+
+### Rails 7+ (Automatic)
+
+mbuzz uses `ActiveSupport::CurrentAttributes` which Rails automatically serializes into ActiveJob payloads:
+
+```ruby
+# In your controller - just enqueue the job
+class OrdersController < ApplicationController
+  def create
+    @order = Order.create!(order_params)
+    ProcessOrderJob.perform_later(@order.id)
+    # visitor_id is automatically captured and passed to the job
+  end
+end
+
+# In your job - mbuzz just works!
+class ProcessOrderJob < ApplicationJob
+  def perform(order_id)
+    order = Order.find(order_id)
+    # Mbuzz::Current.visitor_id was restored by Rails
+    Mbuzz.conversion("purchase", revenue: order.total)
+  end
+end
+```
+
+**How it works:**
+1. Middleware captures `visitor_id` from cookie into `Mbuzz::Current`
+2. Controller enqueues job
+3. Rails serializes `Mbuzz::Current` into job payload
+4. Job runs → Rails restores `Mbuzz::Current`
+5. `Mbuzz.conversion()` reads from `Current` - works!
+
+### Alternative: Explicit visitor_id
+
+For non-Rails apps or when you need more control:
+
+```ruby
+# Store visitor_id on your model
+class Order < ApplicationRecord
+  before_create { self.mbuzz_visitor_id = Mbuzz.visitor_id }
+end
+
+# Pass explicitly in background job
+class ProcessOrderJob
+  def perform(order_id)
+    order = Order.find(order_id)
+    Mbuzz.conversion("purchase",
+      visitor_id: order.mbuzz_visitor_id,  # Explicit
+      revenue: order.total
+    )
+  end
+end
+```
+
 ## Rack / Sinatra Integration
 
 For non-Rails apps, add the middleware manually:
