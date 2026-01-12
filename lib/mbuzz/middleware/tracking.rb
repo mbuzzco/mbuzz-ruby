@@ -18,10 +18,14 @@ module Mbuzz
         env[ENV_VISITOR_ID_KEY] = context[:visitor_id]
         env[ENV_USER_ID_KEY] = context[:user_id]
 
+        store_in_current_attributes(context, request)
+
         RequestContext.with_context(request: request) do
           status, headers, body = @app.call(env)
           set_visitor_cookie(headers, context, request)
           [status, headers, body]
+        ensure
+          reset_current_attributes
         end
       end
 
@@ -89,6 +93,29 @@ module Mbuzz
         }
         options[:secure] = true if request.ssl?
         options
+      end
+
+      # Store context in CurrentAttributes for background job propagation
+      def store_in_current_attributes(context, request)
+        return unless defined?(Mbuzz::Current)
+
+        Mbuzz::Current.visitor_id = context[:visitor_id]
+        Mbuzz::Current.user_id = context[:user_id]
+        Mbuzz::Current.ip = extract_ip(request)
+        Mbuzz::Current.user_agent = request.user_agent
+      end
+
+      def reset_current_attributes
+        return unless defined?(Mbuzz::Current)
+
+        Mbuzz::Current.reset
+      end
+
+      def extract_ip(request)
+        forwarded = request.env["HTTP_X_FORWARDED_FOR"]
+        return forwarded.split(",").first.strip if forwarded
+
+        request.ip
       end
     end
   end

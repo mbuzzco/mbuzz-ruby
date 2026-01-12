@@ -9,3 +9,6 @@ gem "irb"
 gem "rake", "~> 13.0"
 
 gem "minitest", "~> 5.16"
+
+# For testing CurrentAttributes integration (background job support)
+gem "activesupport", ">= 7.0"

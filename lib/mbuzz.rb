@@ -9,6 +9,9 @@ require_relative "mbuzz/client"
 require_relative "mbuzz/middleware/tracking"
 require_relative "mbuzz/controller_helpers"
 
+# CurrentAttributes for automatic background job context propagation (Rails only)
+require_relative "mbuzz/current" if defined?(ActiveSupport::CurrentAttributes)
+
 require_relative "mbuzz/railtie" if defined?(Rails::Railtie)
 
 module Mbuzz
@@ -62,13 +65,25 @@ module Mbuzz
   # Context Accessors
   # ============================================================================
 
+  # Returns visitor_id from Current (background jobs) or request context
   def self.visitor_id
-    RequestContext.current&.request&.env&.dig(ENV_VISITOR_ID_KEY)
+    current_visitor_id || RequestContext.current&.request&.env&.dig(ENV_VISITOR_ID_KEY)
   end
 
   def self.user_id
-    RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
+    current_user_id || RequestContext.current&.request&.env&.dig(ENV_USER_ID_KEY)
   end
+
+  # Check Current attributes (for background job support)
+  def self.current_visitor_id
+    defined?(Current) ? Current.visitor_id : nil
+  end
+  private_class_method :current_visitor_id
+
+  def self.current_user_id
+    defined?(Current) ? Current.user_id : nil
+  end
+  private_class_method :current_user_id
 
   # ============================================================================
   # 4-Call Model API
@@ -195,12 +210,26 @@ module Mbuzz
   private_class_method :enriched_properties
 
   def self.current_ip
-    RequestContext.current&.ip
+    current_attributes_ip || RequestContext.current&.ip
   end
   private_class_method :current_ip
 
   def self.current_user_agent
-    RequestContext.current&.user_agent
+    current_attributes_user_agent || RequestContext.current&.user_agent
   end
   private_class_method :current_user_agent
+
+  def self.current_attributes_ip
+    return nil unless defined?(Current)
+
+    Current.ip
+  end
+  private_class_method :current_attributes_ip
+
+  def self.current_attributes_user_agent
+    return nil unless defined?(Current)
+
+    Current.user_agent
+  end
+  private_class_method :current_attributes_user_agent
 end
