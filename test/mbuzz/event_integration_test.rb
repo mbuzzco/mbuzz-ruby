@@ -71,8 +71,9 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
 
   def test_event_passes_nil_ip_and_user_agent_without_context
     stub_client_track do
-      # No RequestContext - simulates background job or direct call
-      Mbuzz.event("background_task")
+      # No RequestContext - simulates background job with explicit visitor_id
+      # Without visitor_id, event returns false (tested in explicit_visitor_id_test.rb)
+      Mbuzz.event("background_task", visitor_id: "explicit_vid_123")
     end
 
     assert_nil @captured_params[:ip]
@@ -96,6 +97,85 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
     assert_equal "203.0.113.99", @captured_params[:ip]
   end
 
+  def test_event_passes_identifier_from_request_context
+    request = build_mock_request(
+      ip: "203.0.113.50",
+      user_agent: "Mozilla/5.0"
+    )
+
+    stub_client_track do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.event("page_view", identifier: { email: "user@example.com" })
+      end
+    end
+
+    assert_equal({ email: "user@example.com" }, @captured_params[:identifier])
+  end
+
+  # Conversion context tests (v0.7.0+)
+
+  def test_conversion_passes_ip_from_request_context
+    request = build_mock_request(
+      ip: "203.0.113.50",
+      user_agent: "Mozilla/5.0"
+    )
+
+    stub_client_conversion do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.conversion("purchase", revenue: 99.00)
+      end
+    end
+
+    assert_equal "203.0.113.50", @captured_params[:ip]
+  end
+
+  def test_conversion_passes_user_agent_from_request_context
+    request = build_mock_request(
+      ip: "203.0.113.50",
+      user_agent: "Chrome/120"
+    )
+
+    stub_client_conversion do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.conversion("purchase", revenue: 99.00)
+      end
+    end
+
+    assert_equal "Chrome/120", @captured_params[:user_agent]
+  end
+
+  def test_conversion_passes_identifier
+    request = build_mock_request(
+      ip: "203.0.113.50",
+      user_agent: "Mozilla/5.0"
+    )
+
+    stub_client_conversion do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.conversion("purchase", revenue: 99.00, identifier: { email: "buyer@example.com" })
+      end
+    end
+
+    assert_equal({ email: "buyer@example.com" }, @captured_params[:identifier])
+  end
+
+  def test_conversion_passes_all_context_fields
+    request = build_mock_request(
+      ip: "10.0.0.1",
+      user_agent: "Safari/17"
+    )
+
+    stub_client_conversion do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.conversion("signup", identifier: { email: "new@example.com" })
+      end
+    end
+
+    assert_equal "10.0.0.1", @captured_params[:ip]
+    assert_equal "Safari/17", @captured_params[:user_agent]
+    assert_equal({ email: "new@example.com" }, @captured_params[:identifier])
+  end
+
   private
 
   def build_mock_request(ip:, user_agent:, env: {})
@@ -117,15 +197,29 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
     end
   end
 
-  class MockRequest
-    attr_reader :url, :referrer, :user_agent, :env, :ip
+  def stub_client_conversion
+    Mbuzz::Client.stub(:conversion, ->(**params) {
+      @captured_params = params
+      { success: true, conversion_id: "conv_test123" }
+    }) do
+      yield
+    end
+  end
 
-    def initialize(url:, referrer:, user_agent:, env: {}, ip: nil)
+  class MockRequest
+    attr_reader :url, :referrer, :user_agent, :ip
+
+    def initialize(url:, referrer:, user_agent:, env: {}, ip: nil, visitor_id: "test_visitor_123")
       @url = url
       @referrer = referrer
       @user_agent = user_agent
-      @env = env
+      @base_env = env
       @ip = ip
+      @visitor_id = visitor_id
+    end
+
+    def env
+      @base_env.merge(Mbuzz::ENV_VISITOR_ID_KEY => @visitor_id)
     end
   end
 end
