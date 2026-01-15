@@ -21,6 +21,7 @@ module Mbuzz
   #
   class Current < ActiveSupport::CurrentAttributes
     attribute :visitor_id
+    attribute :session_id
     attribute :user_id
     attribute :ip
     attribute :user_agent

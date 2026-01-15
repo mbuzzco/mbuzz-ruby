@@ -89,12 +89,19 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert_equal "visitor789", captured_visitor_id
   end
 
-  # Server-side session resolution - no session cookie needed
-  def test_does_not_set_session_cookie
+  # Session cookie for tracking session state
+  def test_sets_session_cookie
     _status, headers, _body = call_result
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
-    refute_match(/_mbuzz_sid=/, cookie_header, "Should not set session cookie (server-side resolution)")
+    assert_match(/_mbuzz_sid=/, cookie_header, "Should set session cookie for tracking")
+  end
+
+  def test_session_cookie_has_30_minute_max_age
+    _status, headers, _body = call_result
+
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    assert_match(/max-age=1800/i, cookie_header, "Session cookie should have 30 minute expiry")
   end
 
   # Path filtering tests
@@ -356,8 +363,410 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
 
     cookies = []
     cookies << "_mbuzz_vid=#{@existing_visitor_id}" if @existing_visitor_id
+    cookies << "_mbuzz_sid=#{@existing_session_id}" if @existing_session_id
     env["HTTP_COOKIE"] = cookies.join("; ") if cookies.any?
 
     env
+  end
+end
+
+# Session creation tests - middleware must call /api/v1/sessions for new visitors
+class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
+  def setup
+    @original_config = Mbuzz.instance_variable_get(:@config)
+    Mbuzz.instance_variable_set(:@config, nil)
+
+    Mbuzz.configure do |config|
+      config.api_key = "sk_test_123"
+      config.api_url = "https://mbuzz.co/api/v1"
+    end
+
+    @app = ->(env) { [200, { "Content-Type" => "text/html" }, ["OK"]] }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+    @session_created = false
+  end
+
+  def teardown
+    Mbuzz.instance_variable_set(:@config, @original_config)
+  end
+
+  # Session creation tests
+
+  def test_creates_session_for_new_visitor
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      @middleware.call(build_env_without_cookies)
+    end
+
+    assert session_created, "Middleware should create session for new visitor"
+  end
+
+  def test_does_not_create_session_for_returning_visitor_with_session
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      env = build_env_with_visitor_and_session
+      @middleware.call(env)
+    end
+
+    refute session_created, "Middleware should not create session for visitor with existing session"
+  end
+
+  def test_creates_new_session_for_returning_visitor_without_session
+    # Visitor has visitor cookie but session expired (no session cookie)
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      env = build_env_with_visitor_only
+      @middleware.call(env)
+    end
+
+    assert session_created, "Middleware should create session for visitor without active session"
+  end
+
+  def test_session_creation_includes_url
+    captured_params = nil
+
+    stub_session_creation_capture(->(params) { captured_params = params }) do
+      env = build_env_without_cookies
+      @middleware.call(env)
+    end
+
+    refute_nil captured_params, "Session should be created"
+    assert_match(%r{example\.com}, captured_params[:url].to_s)
+  end
+
+  def test_session_creation_includes_referrer
+    captured_params = nil
+
+    stub_session_creation_capture(->(params) { captured_params = params }) do
+      env = build_env_without_cookies.merge("HTTP_REFERER" => "https://google.com/search")
+      @middleware.call(env)
+    end
+
+    refute_nil captured_params
+    assert_equal "https://google.com/search", captured_params[:referrer]
+  end
+
+  def test_session_creation_includes_device_fingerprint
+    captured_params = nil
+
+    stub_session_creation_capture(->(params) { captured_params = params }) do
+      env = build_env_without_cookies.merge(
+        "HTTP_X_FORWARDED_FOR" => "192.168.1.100",
+        "HTTP_USER_AGENT" => "Mozilla/5.0"
+      )
+      @middleware.call(env)
+    end
+
+    refute_nil captured_params
+    refute_nil captured_params[:device_fingerprint], "Should include device fingerprint"
+    assert_equal 32, captured_params[:device_fingerprint].length
+  end
+
+  def test_session_cookie_set_for_new_session
+    stub_session_creation_success do
+      _status, headers, _body = @middleware.call(build_env_without_cookies)
+
+      cookie_header = Array(headers["set-cookie"]).join("\n")
+      assert_match(/_mbuzz_sid=/, cookie_header, "Should set session cookie")
+    end
+  end
+
+  def test_session_cookie_has_30_minute_expiry
+    stub_session_creation_success do
+      _status, headers, _body = @middleware.call(build_env_without_cookies)
+
+      cookie_header = Array(headers["set-cookie"]).join("\n")
+      # 30 minutes = 1800 seconds
+      assert_match(/max-age=1800/i, cookie_header, "Session cookie should have 30 minute expiry")
+    end
+  end
+
+  def test_session_creation_does_not_block_request
+    # Session creation should be async/non-blocking
+    request_completed = false
+    @app = ->(env) {
+      request_completed = true
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    # Simulate slow session creation
+    stub_slow_session_creation do
+      start = Time.now
+      @middleware.call(build_env_without_cookies)
+      elapsed = Time.now - start
+
+      assert request_completed, "Request should complete"
+      # If blocking, would take > 1 second; async should be fast
+      assert elapsed < 0.5, "Session creation should not block request (took #{elapsed}s)"
+    end
+  end
+
+  def test_session_creation_failure_does_not_crash_app
+    @app = ->(env) { [200, {}, ["OK"]] }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    stub_session_creation_error do
+      status, _headers, body = @middleware.call(build_env_without_cookies)
+
+      assert_equal 200, status, "Request should succeed even if session creation fails"
+      assert_equal ["OK"], body
+    end
+  end
+
+  def test_skipped_requests_do_not_create_sessions
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      env = build_env_without_cookies.merge("PATH_INFO" => "/up")
+      @middleware.call(env)
+    end
+
+    refute session_created, "Health check requests should not create sessions"
+  end
+
+  # Thread-safety tests for async session creation
+  # The middleware starts a background thread to create sessions.
+  # Request data must be captured BEFORE the thread starts, not accessed
+  # from the request object inside the thread.
+
+  def test_async_session_creation_captures_request_data_before_thread_starts
+    # This test exposes a race condition: if the background thread accesses
+    # the request object after the main request completes, it may get nil/stale data.
+    captured_params = nil
+    request_completed = false
+
+    # Stub to capture what session creation receives
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**params) {
+      # Wait until main request is done - simulates slow thread startup
+      sleep 0.1 while !request_completed
+      captured_params = params
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      env = build_env_without_cookies.merge(
+        "HTTP_REFERER" => "https://google.com/search?q=test",
+        "HTTP_USER_AGENT" => "TestBrowser/1.0",
+        "HTTP_X_FORWARDED_FOR" => "203.0.113.42"
+      )
+
+      @middleware.call(env)
+      request_completed = true
+
+      # Wait for background thread to complete
+      sleep 0.3
+    end
+
+    # The session creation should have received the correct data
+    # even though the main request completed before the thread ran
+    refute_nil captured_params, "Session creation should have been called"
+    assert_match(%r{example\.com}, captured_params[:url].to_s, "URL should be captured")
+    assert_equal "https://google.com/search?q=test", captured_params[:referrer], "Referrer should be captured"
+    refute_nil captured_params[:device_fingerprint], "Device fingerprint should be captured"
+    assert_equal 32, captured_params[:device_fingerprint].length, "Fingerprint should be 32 chars"
+  end
+
+  def test_async_session_creation_has_correct_fingerprint_when_request_object_invalid
+    # Simulates the scenario where the request object is invalidated
+    # after the main request completes
+    captured_fingerprints = []
+
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**params) {
+      captured_fingerprints << params[:device_fingerprint]
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      env = build_env_without_cookies.merge(
+        "HTTP_USER_AGENT" => "UniqueAgent/123",
+        "HTTP_X_FORWARDED_FOR" => "198.51.100.99"
+      )
+
+      @middleware.call(env)
+      sleep 0.2  # Wait for async thread
+    end
+
+    refute captured_fingerprints.empty?, "Should have captured fingerprint"
+    fingerprint = captured_fingerprints.first
+    refute_nil fingerprint, "Fingerprint should not be nil"
+
+    # Verify it's the expected fingerprint for our IP + User Agent
+    expected = Digest::SHA256.hexdigest("198.51.100.99|UniqueAgent/123")[0, 32]
+    assert_equal expected, fingerprint, "Fingerprint should match expected value"
+  end
+
+  def test_async_session_creation_not_affected_by_env_mutation_after_request
+    # This is the critical test: in production, the env hash may be mutated or
+    # cleared after the response is sent. The background thread must NOT read
+    # from the request/env after the main request completes.
+    #
+    # We simulate this by mutating the env after the middleware call returns
+    # but before the background thread reads it.
+    captured_params = nil
+    thread_started = Queue.new
+    can_continue = Queue.new
+
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**params) {
+      thread_started << true
+      can_continue.pop  # Wait for signal
+      captured_params = params
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      env = build_env_without_cookies.merge(
+        "HTTP_REFERER" => "https://original-referrer.com",
+        "HTTP_USER_AGENT" => "OriginalAgent/1.0",
+        "HTTP_X_FORWARDED_FOR" => "10.0.0.1"
+      )
+
+      @middleware.call(env)
+
+      # Wait for background thread to start
+      thread_started.pop
+
+      # Mutate the env - simulating what happens in production when
+      # the request is reused or cleared
+      env["HTTP_REFERER"] = "https://MUTATED-referrer.com"
+      env["HTTP_USER_AGENT"] = "MUTATED-Agent"
+      env["HTTP_X_FORWARDED_FOR"] = "MUTATED-IP"
+
+      # Let background thread continue
+      can_continue << true
+
+      # Wait for thread to complete
+      sleep 0.2
+    end
+
+    refute_nil captured_params, "Session creation should have been called"
+
+    # These assertions will FAIL if the bug exists (reading from request in thread)
+    # They will PASS after the fix (reading from captured context)
+    assert_equal "https://original-referrer.com", captured_params[:referrer],
+      "Referrer should be original value, not mutated - data must be captured before thread starts"
+
+    expected_fingerprint = Digest::SHA256.hexdigest("10.0.0.1|OriginalAgent/1.0")[0, 32]
+    assert_equal expected_fingerprint, captured_params[:device_fingerprint],
+      "Fingerprint should use original IP/UA, not mutated - data must be captured before thread starts"
+  end
+
+  def test_context_contains_all_session_creation_data
+    # The context hash must contain ALL data needed for session creation
+    # so that the background thread doesn't need to access the request object.
+    # This is critical for thread-safety in production where requests are recycled.
+    captured_context = nil
+
+    # Monkey-patch to capture the context
+    original_method = @middleware.method(:build_request_context)
+    @middleware.define_singleton_method(:build_request_context) do |request|
+      ctx = original_method.call(request)
+      captured_context = ctx
+      ctx
+    end
+
+    stub_session_creation_success do
+      env = build_env_without_cookies.merge(
+        "HTTP_REFERER" => "https://google.com/search",
+        "HTTP_USER_AGENT" => "TestBrowser/2.0",
+        "HTTP_X_FORWARDED_FOR" => "192.168.1.100"
+      )
+      @middleware.call(env)
+    end
+
+    refute_nil captured_context, "Context should be captured"
+
+    # Verify context contains session creation data (not just visitor/session IDs)
+    assert captured_context.key?(:url), "Context must contain :url for async session creation"
+    assert captured_context.key?(:referrer), "Context must contain :referrer for async session creation"
+    assert captured_context.key?(:device_fingerprint), "Context must contain :device_fingerprint for async session creation"
+
+    # Verify the values are correct
+    assert_match(%r{example\.com}, captured_context[:url].to_s) if captured_context[:url]
+    assert_equal "https://google.com/search", captured_context[:referrer] if captured_context[:referrer]
+
+    if captured_context[:device_fingerprint]
+      expected_fp = Digest::SHA256.hexdigest("192.168.1.100|TestBrowser/2.0")[0, 32]
+      assert_equal expected_fp, captured_context[:device_fingerprint]
+    end
+  end
+
+  private
+
+  def build_env_without_cookies
+    {
+      "REQUEST_METHOD" => "GET",
+      "PATH_INFO" => "/products",
+      "QUERY_STRING" => "utm_source=google&utm_medium=cpc",
+      "HTTP_REFERER" => "https://google.com",
+      "HTTP_USER_AGENT" => "Mozilla/5.0",
+      "rack.url_scheme" => "https",
+      "HTTP_HOST" => "example.com",
+      "rack.session" => {}
+    }
+  end
+
+  def build_env_with_visitor_and_session
+    build_env_without_cookies.merge(
+      "HTTP_COOKIE" => "_mbuzz_vid=existing_visitor_123; _mbuzz_sid=existing_session_456"
+    )
+  end
+
+  def build_env_with_visitor_only
+    build_env_without_cookies.merge(
+      "HTTP_COOKIE" => "_mbuzz_vid=existing_visitor_123"
+    )
+  end
+
+  def stub_session_creation(callback)
+    # Stub the session creation to track if it was called
+    # Note: Must wait for async thread inside the block, before stub is removed
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**_params) {
+      callback.call
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      yield
+      sleep 0.1  # Wait for async thread to complete
+    end
+  end
+
+  def stub_session_creation_capture(callback)
+    # Note: Must wait for async thread inside the block, before stub is removed
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**params) {
+      callback.call(params)
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      yield
+      sleep 0.1  # Wait for async thread to complete
+    end
+  end
+
+  def stub_session_creation_success
+    response = { "status" => "accepted", "visitor_id" => "v", "session_id" => "s", "channel" => "direct" }
+    Mbuzz::Api.stub(:post_with_response, response) do
+      yield
+    end
+  end
+
+  def stub_slow_session_creation
+    Mbuzz::Api.stub(:post_with_response, ->(*) {
+      sleep 1.5  # Simulate slow API
+      { "status" => "accepted", "visitor_id" => "v", "session_id" => "s", "channel" => "direct" }
+    }) do
+      yield
+    end
+  end
+
+  def stub_session_creation_error
+    Mbuzz::Api.stub(:post_with_response, ->(*) { raise StandardError, "API Error" }) do
+      yield
+    end
   end
 end

@@ -3,6 +3,7 @@
 require_relative "client/track_request"
 require_relative "client/identify_request"
 require_relative "client/conversion_request"
+require_relative "client/session_request"
 
 module Mbuzz
   class Client
@@ -28,6 +29,17 @@ module Mbuzz
         ip: ip,
         user_agent: user_agent,
         identifier: identifier
+      ).call
+    end
+
+    def self.session(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil, started_at: nil)
+      SessionRequest.new(
+        visitor_id: visitor_id,
+        session_id: session_id,
+        url: url,
+        referrer: referrer,
+        device_fingerprint: device_fingerprint,
+        started_at: started_at
       ).call
     end
   end

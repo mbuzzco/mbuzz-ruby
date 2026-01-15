@@ -20,15 +20,20 @@ module Mbuzz
   EVENTS_PATH = "/events"
   IDENTIFY_PATH = "/identify"
   CONVERSIONS_PATH = "/conversions"
+  SESSIONS_PATH = "/sessions"
 
   VISITOR_COOKIE_NAME = "_mbuzz_vid"
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
 
+  SESSION_COOKIE_NAME = "_mbuzz_sid"
+  SESSION_COOKIE_MAX_AGE = 30 * 60 # 30 minutes
+
   SESSION_USER_ID_KEY = "user_id"
   ENV_USER_ID_KEY = "mbuzz.user_id"
   ENV_VISITOR_ID_KEY = "mbuzz.visitor_id"
+  ENV_SESSION_ID_KEY = "mbuzz.session_id"
 
   # ============================================================================
   # Configuration
