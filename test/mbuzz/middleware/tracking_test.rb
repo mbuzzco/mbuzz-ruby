@@ -89,19 +89,11 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert_equal "visitor789", captured_visitor_id
   end
 
-  # Session cookie for tracking session state
-  def test_sets_session_cookie
+  def test_session_cookie_not_set
     _status, headers, _body = call_result
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
-    assert_match(/_mbuzz_sid=/, cookie_header, "Should set session cookie for tracking")
-  end
-
-  def test_session_cookie_has_30_minute_max_age
-    _status, headers, _body = call_result
-
-    cookie_header = Array(headers["set-cookie"]).join("\n")
-    assert_match(/max-age=1800/i, cookie_header, "Session cookie should have 30 minute expiry")
+    refute_match(/_mbuzz_sid=/, cookie_header, "Should not set session cookie — sessions are server-side")
   end
 
   # Path filtering tests
@@ -363,7 +355,6 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
 
     cookies = []
     cookies << "_mbuzz_vid=#{@existing_visitor_id}" if @existing_visitor_id
-    cookies << "_mbuzz_sid=#{@existing_session_id}" if @existing_session_id
     env["HTTP_COOKIE"] = cookies.join("; ") if cookies.any?
 
     env
@@ -402,19 +393,7 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
     assert session_created, "Middleware should create session for new visitor"
   end
 
-  def test_does_not_create_session_for_returning_visitor_with_session
-    session_created = false
-
-    stub_session_creation(-> { session_created = true }) do
-      env = build_env_with_visitor_and_session
-      @middleware.call(env)
-    end
-
-    refute session_created, "Middleware should not create session for visitor with existing session"
-  end
-
-  def test_creates_new_session_for_returning_visitor_without_session
-    # Visitor has visitor cookie but session expired (no session cookie)
+  def test_creates_session_for_returning_visitor_navigating
     session_created = false
 
     stub_session_creation(-> { session_created = true }) do
@@ -422,7 +401,7 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
       @middleware.call(env)
     end
 
-    assert session_created, "Middleware should create session for visitor without active session"
+    assert session_created, "Middleware should create session for returning visitor on navigation"
   end
 
   def test_session_creation_includes_url
@@ -465,22 +444,12 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
     assert_equal 32, captured_params[:device_fingerprint].length
   end
 
-  def test_session_cookie_set_for_new_session
+  def test_session_cookie_not_set
     stub_session_creation_success do
       _status, headers, _body = @middleware.call(build_env_without_cookies)
 
       cookie_header = Array(headers["set-cookie"]).join("\n")
-      assert_match(/_mbuzz_sid=/, cookie_header, "Should set session cookie")
-    end
-  end
-
-  def test_session_cookie_has_30_minute_expiry
-    stub_session_creation_success do
-      _status, headers, _body = @middleware.call(build_env_without_cookies)
-
-      cookie_header = Array(headers["set-cookie"]).join("\n")
-      # 30 minutes = 1800 seconds
-      assert_match(/max-age=1800/i, cookie_header, "Session cookie should have 30 minute expiry")
+      refute_match(/_mbuzz_sid=/, cookie_header, "Should not set session cookie — sessions are server-side")
     end
   end
 
@@ -696,6 +665,13 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
 
   private
 
+  def navigation_headers
+    {
+      "HTTP_SEC_FETCH_MODE" => "navigate",
+      "HTTP_SEC_FETCH_DEST" => "document"
+    }
+  end
+
   def build_env_without_cookies
     {
       "REQUEST_METHOD" => "GET",
@@ -706,13 +682,7 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
       "rack.session" => {}
-    }
-  end
-
-  def build_env_with_visitor_and_session
-    build_env_without_cookies.merge(
-      "HTTP_COOKIE" => "_mbuzz_vid=existing_visitor_123; _mbuzz_sid=existing_session_456"
-    )
+    }.merge(navigation_headers)
   end
 
   def build_env_with_visitor_only
@@ -767,6 +737,211 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
   def stub_session_creation_error
     Mbuzz::Api.stub(:post_with_response, ->(*) { raise StandardError, "API Error" }) do
       yield
+    end
+  end
+end
+
+# Navigation detection tests — should_create_session? gates session creation
+# on Sec-Fetch-* headers (whitelist) with framework-specific blacklist fallback.
+class Mbuzz::Middleware::NavigationDetectionTest < Minitest::Test
+  def setup
+    @original_config = Mbuzz.instance_variable_get(:@config)
+    Mbuzz.instance_variable_set(:@config, nil)
+
+    Mbuzz.configure do |config|
+      config.api_key = "sk_test_123"
+      config.api_url = "https://mbuzz.co/api/v1"
+    end
+
+    @app = ->(env) { [200, { "Content-Type" => "text/html" }, ["OK"]] }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+  end
+
+  def teardown
+    Mbuzz.instance_variable_set(:@config, @original_config)
+  end
+
+  # === Whitelist: Sec-Fetch-* headers present (modern browsers) ===
+
+  def test_creates_session_for_real_page_navigation
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "navigate",
+      "HTTP_SEC_FETCH_DEST" => "document"
+    )
+
+    assert @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_turbo_frame
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "same-origin",
+      "HTTP_SEC_FETCH_DEST" => "empty",
+      "HTTP_TURBO_FRAME" => "content"
+    )
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_htmx_request
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "same-origin",
+      "HTTP_SEC_FETCH_DEST" => "empty",
+      "HTTP_HX_REQUEST" => "true"
+    )
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_fetch_xhr
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "cors",
+      "HTTP_SEC_FETCH_DEST" => "empty"
+    )
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_prefetch
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "navigate",
+      "HTTP_SEC_FETCH_DEST" => "document",
+      "HTTP_SEC_PURPOSE" => "prefetch"
+    )
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_iframe
+    env = base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "navigate",
+      "HTTP_SEC_FETCH_DEST" => "iframe"
+    )
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  # === Blacklist fallback: no Sec-Fetch-* headers (old browsers / bots) ===
+
+  def test_creates_session_for_old_browser_without_framework_headers
+    env = base_env # No Sec-Fetch-*, no framework headers
+
+    assert @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_old_browser_with_turbo_frame
+    env = base_env.merge("HTTP_TURBO_FRAME" => "content")
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_old_browser_with_hx_request
+    env = base_env.merge("HTTP_HX_REQUEST" => "true")
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_old_browser_with_xhr
+    env = base_env.merge("HTTP_X_REQUESTED_WITH" => "XMLHttpRequest")
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  def test_skips_session_for_old_browser_with_unpoly
+    env = base_env.merge("HTTP_X_UP_VERSION" => "3.0.0")
+
+    refute @middleware.should_create_session?(env)
+  end
+
+  # === Integration: navigation detection gates session API call ===
+
+  def test_navigation_request_triggers_session_creation
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      env = build_navigation_env
+      @middleware.call(env)
+    end
+
+    assert session_created, "Navigation request should trigger session creation"
+  end
+
+  def test_turbo_frame_request_skips_session_creation
+    session_created = false
+
+    stub_session_creation(-> { session_created = true }) do
+      env = build_turbo_frame_env
+      @middleware.call(env)
+    end
+
+    refute session_created, "Turbo Frame request should not trigger session creation"
+  end
+
+  def test_visitor_cookie_set_even_when_session_skipped
+    _status, headers, _body = @middleware.call(build_turbo_frame_env)
+
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    assert_match(/_mbuzz_vid=/, cookie_header, "Visitor cookie should always be set")
+  end
+
+  def test_session_cookie_never_set
+    _status, headers, _body = @middleware.call(build_navigation_env)
+
+    cookie_header = Array(headers["set-cookie"]).join("\n")
+    refute_match(/_mbuzz_sid=/, cookie_header, "Session cookie should never be set")
+  end
+
+  def test_env_keys_set_even_when_session_skipped
+    captured_env = nil
+    @app = ->(env) {
+      captured_env = env
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    @middleware.call(build_turbo_frame_env)
+
+    refute_nil captured_env["mbuzz.visitor_id"], "visitor_id should be set in env"
+    refute_nil captured_env["mbuzz.session_id"], "session_id should be set in env"
+  end
+
+  private
+
+  def base_env
+    {
+      "REQUEST_METHOD" => "GET",
+      "PATH_INFO" => "/products",
+      "QUERY_STRING" => "",
+      "HTTP_USER_AGENT" => "Mozilla/5.0",
+      "rack.url_scheme" => "https",
+      "HTTP_HOST" => "example.com",
+      "rack.session" => {}
+    }
+  end
+
+  def build_navigation_env
+    base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "navigate",
+      "HTTP_SEC_FETCH_DEST" => "document"
+    )
+  end
+
+  def build_turbo_frame_env
+    base_env.merge(
+      "HTTP_SEC_FETCH_MODE" => "same-origin",
+      "HTTP_SEC_FETCH_DEST" => "empty",
+      "HTTP_TURBO_FRAME" => "content"
+    )
+  end
+
+  def stub_session_creation(callback)
+    Mbuzz::Client::SessionRequest.stub(:new, ->(**_params) {
+      callback.call
+      mock = Minitest::Mock.new
+      mock.expect(:call, { success: true, visitor_id: "v", session_id: "s", channel: "direct" })
+      mock
+    }) do
+      yield
+      sleep 0.1
     end
   end
 end

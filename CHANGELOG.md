@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-02-02
+
+### Breaking Changes
+
+- **Session cookie removed** — `_mbuzz_sid` cookie is no longer set or read. Sessions are fully server-side.
+- **`SESSION_COOKIE_NAME` and `SESSION_COOKIE_MAX_AGE` constants removed** from `Mbuzz` module.
+
+### Added
+
+- **Navigation-aware session creation** — middleware now gates `POST /sessions` on real page navigations using browser-enforced `Sec-Fetch-*` headers (whitelist), with a framework-specific blacklist fallback for older browsers and bots.
+  - Turbo Frame, htmx, Unpoly, and XHR sub-requests no longer create spurious sessions.
+  - Prefetches and iframe loads are correctly filtered out.
+- New public methods on `Mbuzz::Middleware::Tracking`: `should_create_session?`, `sec_fetch_headers?`, `page_navigation?`, `framework_sub_request?`
+
+### Migration Guide
+
+1. Remove any code that reads or depends on the `_mbuzz_sid` cookie.
+2. Remove references to `Mbuzz::SESSION_COOKIE_NAME` or `Mbuzz::SESSION_COOKIE_MAX_AGE`.
+3. Visitor cookie (`_mbuzz_vid`) is unaffected — still set on every request.
+
 ## [0.7.0] - 2026-01-09
 
 ### Breaking Changes

@@ -23,12 +23,11 @@ module Mbuzz
 
         store_in_current_attributes(context, request)
 
-        create_session_async(context, request) if context[:new_session]
+        create_session_async(context, request) if should_create_session?(env)
 
         RequestContext.with_context(request: request) do
           status, headers, body = @app.call(env)
           set_visitor_cookie(headers, context, request)
-          set_session_cookie(headers, context, request)
           [status, headers, body]
         ensure
           reset_current_attributes
@@ -51,25 +50,46 @@ module Mbuzz
         Mbuzz.config.all_skip_extensions.any? { |ext| path.end_with?(ext) }
       end
 
+      # Navigation detection — only create sessions for real page navigations.
+      # Sec-Fetch-* headers (browser-enforced, unforgeable) are the primary signal;
+      # framework-specific blacklist covers old browsers and bots.
+
+      def should_create_session?(env)
+        return page_navigation?(env) if sec_fetch_headers?(env)
+
+        !framework_sub_request?(env)
+      end
+
+      def sec_fetch_headers?(env)
+        !env["HTTP_SEC_FETCH_MODE"].nil?
+      end
+
+      def page_navigation?(env)
+        env["HTTP_SEC_FETCH_MODE"] == "navigate" &&
+          env["HTTP_SEC_FETCH_DEST"] == "document" &&
+          env["HTTP_SEC_PURPOSE"].nil?
+      end
+
+      def framework_sub_request?(env)
+        !env["HTTP_TURBO_FRAME"].nil? ||
+          !env["HTTP_HX_REQUEST"].nil? ||
+          !env["HTTP_X_UP_VERSION"].nil? ||
+          env["HTTP_X_REQUESTED_WITH"] == "XMLHttpRequest"
+      end
+
       private
 
-      # Build all request-specific context as a frozen hash
-      # This ensures thread-safety by using local variables only
-      # IMPORTANT: All values needed by async session creation must be captured here,
-      # NOT accessed from the request object in the background thread (see #create_session)
+      # Build all request-specific context as a frozen hash.
+      # Thread-safety: all values needed by async session creation are captured here,
+      # NOT accessed from the request object in the background thread.
       def build_request_context(request)
-        existing_session_id = session_id_from_cookie(request)
-        new_session = existing_session_id.nil?
         ip = extract_ip(request)
         user_agent = request.user_agent.to_s
 
         {
           visitor_id: resolve_visitor_id(request),
-          session_id: existing_session_id || generate_session_id,
+          session_id: SecureRandom.uuid,
           user_id: user_id_from_session(request),
-          new_session: new_session,
-          # Session creation data - captured here for thread-safety
-          # Background thread must NOT read from request object
           url: request.url,
           referrer: request.referer,
           ip: ip,
@@ -84,14 +104,6 @@ module Mbuzz
 
       def visitor_id_from_cookie(request)
         request.cookies[VISITOR_COOKIE_NAME]
-      end
-
-      def session_id_from_cookie(request)
-        request.cookies[SESSION_COOKIE_NAME]
-      end
-
-      def generate_session_id
-        SecureRandom.uuid
       end
 
       def user_id_from_session(request)
@@ -126,7 +138,7 @@ module Mbuzz
         Rails.logger.error("[Mbuzz] #{message}")
       end
 
-      # Cookie setting - visitor and session cookies
+      # Cookie setting - visitor identity only (sessions are server-side)
 
       def set_visitor_cookie(headers, context, request)
         Rack::Utils.set_cookie_header!(
@@ -136,25 +148,10 @@ module Mbuzz
         )
       end
 
-      def set_session_cookie(headers, context, request)
-        Rack::Utils.set_cookie_header!(
-          headers,
-          SESSION_COOKIE_NAME,
-          session_cookie_options(context, request)
-        )
-      end
-
       def visitor_cookie_options(context, request)
         base_cookie_options(request).merge(
           value: context[:visitor_id],
           max_age: VISITOR_COOKIE_MAX_AGE
-        )
-      end
-
-      def session_cookie_options(context, request)
-        base_cookie_options(request).merge(
-          value: context[:session_id],
-          max_age: SESSION_COOKIE_MAX_AGE
         )
       end
 

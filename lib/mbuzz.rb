@@ -27,9 +27,6 @@ module Mbuzz
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
 
-  SESSION_COOKIE_NAME = "_mbuzz_sid"
-  SESSION_COOKIE_MAX_AGE = 30 * 60 # 30 minutes
-
   SESSION_USER_ID_KEY = "user_id"
   ENV_USER_ID_KEY = "mbuzz.user_id"
   ENV_VISITOR_ID_KEY = "mbuzz.visitor_id"
