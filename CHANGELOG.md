@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-02-17
+
+### Fixed
+
+- **`conversion()` now resolves `user_id` from context** — the `user_id: nil` parameter was shadowing `self.user_id`, preventing the identify → convert flow from working. `event()` was not affected.
+- **`identify()` now stores `user_id` in context** — after a successful API call, `user_id` is written to `Current.user_id` and `request.env` so that subsequent `conversion()` calls in the same request can resolve it.
+
 ## [0.7.3] - 2026-02-02
 
 ### Breaking Changes
