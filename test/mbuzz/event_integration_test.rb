@@ -112,6 +112,40 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
     assert_equal({ email: "user@example.com" }, @captured_params[:identifier])
   end
 
+  # Identify → Convert flow tests (Phase 3A)
+
+  def test_conversion_picks_up_user_id_after_identify_in_same_request
+    request = build_mock_request(ip: "10.0.0.1", user_agent: "Chrome/120")
+
+    Mbuzz::Api.stub(:post, true) do
+      stub_client_conversion do
+        Mbuzz::RequestContext.with_context(request: request) do
+          Mbuzz.identify("user_123", traits: { email: "jane@example.com" })
+          Mbuzz.conversion("purchase", revenue: 99.99)
+        end
+      end
+    end
+
+    assert_equal "user_123", @captured_params[:user_id],
+      "conversion() should resolve user_id from context after identify()"
+  end
+
+  def test_explicit_user_id_takes_precedence_over_context
+    request = build_mock_request(ip: "10.0.0.1", user_agent: "Chrome/120")
+
+    Mbuzz::Api.stub(:post, true) do
+      stub_client_conversion do
+        Mbuzz::RequestContext.with_context(request: request) do
+          Mbuzz.identify("user_123")
+          Mbuzz.conversion("purchase", revenue: 99.99, user_id: "explicit_456")
+        end
+      end
+    end
+
+    assert_equal "explicit_456", @captured_params[:user_id],
+      "Explicit user_id: parameter should take precedence over context"
+  end
+
   # Conversion context tests (v0.7.0+)
 
   def test_conversion_passes_ip_from_request_context
@@ -219,7 +253,7 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
     end
 
     def env
-      @base_env.merge(Mbuzz::ENV_VISITOR_ID_KEY => @visitor_id)
+      @env ||= @base_env.merge(Mbuzz::ENV_VISITOR_ID_KEY => @visitor_id)
     end
   end
 end

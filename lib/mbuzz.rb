@@ -161,13 +161,14 @@ module Mbuzz
   #
   def self.conversion(conversion_type, visitor_id: nil, revenue: nil, user_id: nil, is_acquisition: false, inherit_acquisition: false, identifier: nil, **properties)
     resolved_visitor_id = visitor_id || self.visitor_id
+    resolved_user_id = user_id || self.user_id
 
     # Must have at least one identifier (visitor_id or user_id)
-    return false unless resolved_visitor_id || user_id
+    return false unless resolved_visitor_id || resolved_user_id
 
     Client.conversion(
       visitor_id: resolved_visitor_id,
-      user_id: user_id,
+      user_id: resolved_user_id,
       conversion_type: conversion_type,
       revenue: revenue,
       is_acquisition: is_acquisition,
@@ -193,16 +194,27 @@ module Mbuzz
   #   Mbuzz.identify("user_123", visitor_id: "abc123...", traits: { email: "jane@example.com" })
   #
   def self.identify(user_id, traits: {}, visitor_id: nil)
-    Client.identify(
+    result = Client.identify(
       user_id: user_id,
       visitor_id: visitor_id || self.visitor_id,
       traits: traits
     )
+
+    store_user_id_in_context(user_id) if result
+
+    result
   end
 
   # ============================================================================
   # Private Helpers
   # ============================================================================
+
+  def self.store_user_id_in_context(uid)
+    str_id = uid.to_s
+    Current.user_id = str_id if defined?(Current)
+    RequestContext.current&.request&.env&.[]=(ENV_USER_ID_KEY, str_id)
+  end
+  private_class_method :store_user_id_in_context
 
   def self.enriched_properties(custom_properties)
     return custom_properties unless RequestContext.current
