@@ -130,6 +130,29 @@ class Mbuzz::EventIntegrationTest < Minitest::Test
       "conversion() should resolve user_id from context after identify()"
   end
 
+  def test_conversion_returns_false_without_identify_or_explicit_user_id
+    # No context, no explicit visitor_id, no explicit user_id, no identify
+    Mbuzz::Api.stub(:post_with_response, nil) do
+      result = Mbuzz.conversion("purchase", revenue: 99.99)
+      assert_equal false, result,
+        "conversion() must fail when no visitor_id or user_id is available"
+    end
+  end
+
+  def test_conversion_payload_excludes_nil_user_id
+    request = build_mock_request(ip: "10.0.0.1", user_agent: "Chrome/120")
+
+    # No identify() called — user_id should be nil and excluded from payload
+    stub_client_conversion do
+      Mbuzz::RequestContext.with_context(request: request) do
+        Mbuzz.conversion("purchase", revenue: 99.99)
+      end
+    end
+
+    assert_nil @captured_params[:user_id],
+      "user_id should be nil when identify() was not called"
+  end
+
   def test_explicit_user_id_takes_precedence_over_context
     request = build_mock_request(ip: "10.0.0.1", user_agent: "Chrome/120")
 
