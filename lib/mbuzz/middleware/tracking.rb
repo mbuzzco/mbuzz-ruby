@@ -128,7 +128,8 @@ module Mbuzz
           session_id: context[:session_id],
           url: context[:url],
           referrer: context[:referrer],
-          device_fingerprint: context[:device_fingerprint]
+          device_fingerprint: context[:device_fingerprint],
+          user_agent: context[:user_agent]
         )
       end
 

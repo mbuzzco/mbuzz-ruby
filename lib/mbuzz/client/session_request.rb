@@ -12,12 +12,13 @@ module Mbuzz
       # Response values
       ACCEPTED_STATUS = "accepted"
 
-      def initialize(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil, started_at: nil)
+      def initialize(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil, user_agent: nil, started_at: nil)
         @visitor_id = visitor_id
         @session_id = session_id
         @url = url
         @referrer = referrer
         @device_fingerprint = device_fingerprint
+        @user_agent = user_agent
         @started_at = started_at
       end
 
@@ -31,7 +32,7 @@ module Mbuzz
 
       private
 
-      attr_reader :visitor_id, :session_id, :url, :referrer, :device_fingerprint, :started_at
+      attr_reader :visitor_id, :session_id, :url, :referrer, :device_fingerprint, :user_agent, :started_at
 
       def valid?
         present?(visitor_id) && present?(session_id) && present?(url)
@@ -48,6 +49,7 @@ module Mbuzz
           url: url,
           referrer: referrer,
           device_fingerprint: device_fingerprint,
+          user_agent: user_agent,
           started_at: started_at || Time.now.utc.iso8601
         }.compact
       end
