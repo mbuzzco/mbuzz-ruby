@@ -197,7 +197,7 @@ run MyApp
 ```ruby
 Mbuzz.init(
   api_key: "sk_live_...",             # Required - from mbuzz.co dashboard
-  api_url: "https://mbuzz.co/api/v1", # Optional - API endpoint
+  api_url: "https://api.mbuzz.co/api/v1", # Optional - API endpoint
   debug: false                        # Optional - enable debug logging
 )
 ```

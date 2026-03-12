@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-03-13
+
+### Changed
+
+- **Default API URL updated to `https://api.mbuzz.co/api/v1`** — traffic now routes through the edge ingest proxy for improved reliability. The previous URL (`https://mbuzz.co/api/v1`) remains supported as a configurable fallback via `api_url`.
+
 ## [0.7.4] - 2026-02-17
 
 ### Fixed

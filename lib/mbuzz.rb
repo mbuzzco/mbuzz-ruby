@@ -42,7 +42,7 @@ module Mbuzz
 
   # New simplified configuration method (v0.5.0)
   # @param api_key [String] Your mbuzz API key
-  # @param api_url [String, nil] Override API URL (defaults to https://mbuzz.co/api/v1)
+  # @param api_url [String, nil] Override API URL (defaults to https://api.mbuzz.co/api/v1)
   # @param session_timeout [Integer, nil] Session timeout in seconds
   # @param debug [Boolean, nil] Enable debug logging
   # @param skip_paths [Array<String>, nil] Additional paths to skip tracking (e.g., ["/admin", "/internal"])

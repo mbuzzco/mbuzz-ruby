@@ -26,7 +26,7 @@ module Mbuzz
     ].freeze
 
     def initialize
-      @api_url = "https://mbuzz.co/api/v1"
+      @api_url = "https://api.mbuzz.co/api/v1"
       @enabled = true
       @debug = false
       @timeout = 5
