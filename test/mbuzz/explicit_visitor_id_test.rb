@@ -13,7 +13,8 @@ class ExplicitVisitorIdTest < Minitest::Test
     @original_config = Mbuzz.instance_variable_get(:@config)
     Mbuzz.instance_variable_set(:@config, nil)
 
-    Mbuzz.init(api_key: "sk_test_123", api_url: "http://localhost:3000/api/v1")
+    Mbuzz.init(api_key: "sk_test_123")
+    Mbuzz.config.api_url = "http://localhost:3000/api/v1"
 
     # Clear any cached fallback visitor_id
     Mbuzz.instance_variable_set(:@fallback_visitor_id, nil)
