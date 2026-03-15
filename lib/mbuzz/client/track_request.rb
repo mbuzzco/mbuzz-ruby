@@ -14,7 +14,9 @@ module Mbuzz
       end
 
       def call
-        return false unless valid?
+        return false unless input_valid?
+        return proxy_result if proxy_accepted?
+        return false unless event
 
         { success: true, event_id: event["id"], event_type: event["event_type"],
           visitor_id: event["visitor_id"], session_id: event["session_id"] }
@@ -22,8 +24,16 @@ module Mbuzz
 
       private
 
-      def valid?
-        present?(@event_type) && hash?(@properties) && (@user_id || @visitor_id) && event
+      def input_valid?
+        present?(@event_type) && hash?(@properties) && (@user_id || @visitor_id)
+      end
+
+      def proxy_accepted?
+        response && response["status"] == "accepted" && !response.key?("events")
+      end
+
+      def proxy_result
+        { success: true, event_id: nil, event_type: @event_type, visitor_id: @visitor_id, session_id: nil }
       end
 
       def event

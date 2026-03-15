@@ -47,6 +47,24 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  # Proxy degraded 202 tests (edge proxy accepted but Rails unreachable)
+
+  def test_track_returns_success_on_proxy_accepted_response
+    stub_api_success_with_response(proxy_accepted_response) do
+      result = track_result
+      assert result[:success]
+      assert_nil result[:event_id]
+      assert_equal "Signup", result[:event_type]
+      assert_nil result[:session_id]
+    end
+  end
+
+  def test_track_proxy_response_is_truthy_for_boolean_checks
+    stub_api_success_with_response(proxy_accepted_response) do
+      assert track_result
+    end
+  end
+
   def test_track_works_with_user_id
     @user_id = 123
     @visitor_id = nil
@@ -380,6 +398,28 @@ class Mbuzz::ClientTest < Minitest::Test
     end
   end
 
+  def test_conversion_returns_success_on_proxy_accepted_response
+    stub_api_success_with_response(proxy_accepted_response) do
+      result = Mbuzz::Client.conversion(
+        event_id: "evt_abc123",
+        conversion_type: "purchase"
+      )
+      assert result[:success]
+      assert_nil result[:conversion_id]
+      assert_nil result[:attribution]
+    end
+  end
+
+  def test_conversion_proxy_response_is_truthy_for_boolean_checks
+    stub_api_success_with_response(proxy_accepted_response) do
+      result = Mbuzz::Client.conversion(
+        event_id: "evt_abc123",
+        conversion_type: "purchase"
+      )
+      assert result
+    end
+  end
+
   # Conversion with fingerprint fallback (v0.7.0+)
 
   def test_conversion_accepts_ip_parameter
@@ -481,6 +521,10 @@ class Mbuzz::ClientTest < Minitest::Test
     Mbuzz::Api.stub(:post_with_response, nil) do
       yield
     end
+  end
+
+  def proxy_accepted_response
+    { "status" => "accepted", "request_id" => "req_a1b2c3d4e5f6" }
   end
 
   def stub_conversion_success

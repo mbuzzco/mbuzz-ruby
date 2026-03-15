@@ -19,15 +19,25 @@ module Mbuzz
       end
 
       def call
-        return false unless valid?
+        return false unless input_valid?
+        return proxy_result if proxy_accepted?
+        return false unless conversion_id
 
         { success: true, conversion_id: conversion_id, attribution: attribution }
       end
 
       private
 
-      def valid?
-        has_identifier? && present?(@conversion_type) && hash?(@properties) && conversion_id
+      def input_valid?
+        has_identifier? && present?(@conversion_type) && hash?(@properties)
+      end
+
+      def proxy_accepted?
+        response && response["status"] == "accepted" && !response.key?("conversion")
+      end
+
+      def proxy_result
+        { success: true, conversion_id: nil, attribution: nil }
       end
 
       def has_identifier?
