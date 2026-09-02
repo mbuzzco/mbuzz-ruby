@@ -7,6 +7,7 @@ require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
 require_relative "mbuzz/client"
 require_relative "mbuzz/middleware/tracking"
+require_relative "mbuzz/middleware/session_endpoint"
 require_relative "mbuzz/controller_helpers"
 
 # CurrentAttributes for automatic background job context propagation (Rails only)
@@ -26,6 +27,10 @@ module Mbuzz
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
+
+  # The one request a cached page always sends to the app. Kept off /api and
+  # /assets so host-app routing and cache rules don't shadow it.
+  SESSION_ENDPOINT_PATH = "/_mbuzz/session"
 
   SESSION_USER_ID_KEY = "user_id"
   ENV_USER_ID_KEY = "mbuzz.user_id"
