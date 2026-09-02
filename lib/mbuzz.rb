@@ -2,6 +2,7 @@
 
 require_relative "mbuzz/version"
 require_relative "mbuzz/configuration"
+require_relative "mbuzz/dropped_call"
 require_relative "mbuzz/visitor/identifier"
 require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
@@ -115,8 +116,13 @@ module Mbuzz
     resolved_visitor_id = visitor_id || self.visitor_id
     resolved_user_id = user_id
 
-    # Must have at least one identifier
-    return false unless resolved_visitor_id || resolved_user_id
+    # Must have at least one identifier. Warn rather than drop in silence: with
+    # no visitor and no user there is nothing to attribute this to, and behind a
+    # full-page cache that is the normal case, not an edge one.
+    unless resolved_visitor_id || resolved_user_id
+      DroppedCall.warn_missing_identity("event", event_type)
+      return false
+    end
 
     Client.track(
       visitor_id: resolved_visitor_id,
@@ -166,8 +172,12 @@ module Mbuzz
     resolved_visitor_id = visitor_id || self.visitor_id
     resolved_user_id = user_id || self.user_id
 
-    # Must have at least one identifier (visitor_id or user_id)
-    return false unless resolved_visitor_id || resolved_user_id
+    # Must have at least one identifier (visitor_id or user_id). A conversion
+    # dropped here is lost revenue attribution, so it is never silent.
+    unless resolved_visitor_id || resolved_user_id
+      DroppedCall.warn_missing_identity("conversion", conversion_type)
+      return false
+    end
 
     Client.conversion(
       visitor_id: resolved_visitor_id,

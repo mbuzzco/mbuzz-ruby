@@ -14,7 +14,7 @@ module Mbuzz
       end
 
       def call
-        return false unless input_valid?
+        return warn_dropped unless input_valid?
         return proxy_result if proxy_accepted?
         return false unless event
 
@@ -23,6 +23,13 @@ module Mbuzz
       end
 
       private
+
+      # A drop with no request and no log is how this failure stayed invisible
+      # on a live account for a full day. Say it out loud.
+      def warn_dropped
+        DroppedCall.warn_missing_identity("event", @event_type) unless @user_id || @visitor_id
+        false
+      end
 
       def input_valid?
         present?(@event_type) && hash?(@properties) && (@user_id || @visitor_id)

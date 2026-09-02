@@ -19,7 +19,7 @@ module Mbuzz
       end
 
       def call
-        return false unless input_valid?
+        return warn_dropped unless input_valid?
         return proxy_result if proxy_accepted?
         return false unless conversion_id
 
@@ -27,6 +27,11 @@ module Mbuzz
       end
 
       private
+
+      def warn_dropped
+        DroppedCall.warn_missing_identity("conversion", @conversion_type) unless has_identifier?
+        false
+      end
 
       def input_valid?
         has_identifier? && present?(@conversion_type) && hash?(@properties)

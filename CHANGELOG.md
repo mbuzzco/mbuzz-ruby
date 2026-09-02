@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A dropped event or conversion now says so.** `Mbuzz.event` and `Mbuzz.conversion` return `false` when there is no `visitor_id` and no `user_id` — previously with no request, no log and no signal of any kind. That silence is what made the caching bug above invisible on a live account for a full day. They now warn at `Rails.logger.warn` (or stderr outside Rails), naming the dropped call and pointing at the session endpoint. Deliberately **not** gated behind `debug`: the people who hit this are precisely the ones not running in debug.
 - **Attribution now survives a full-page cache.** A cached page is answered without entering the Rack stack, so the tracking middleware never ran, no visitor cookie was set, and every later event was dropped for having no one to attribute it to — silently, while the page rendered perfectly. `Mbuzz::Middleware::SessionEndpoint` answers `POST /_mbuzz/session`, a path caches don't store, and the server sets the cookie on that response. Mounted automatically in Rails; add it ahead of `Tracking` in Rack/Sinatra apps. See "Full-page caching" in the README for the one-time page snippet.
 
 ### Notes
