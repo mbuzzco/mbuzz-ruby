@@ -25,7 +25,12 @@ Gem::Specification.new do |spec|
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
-        f.start_with?(*%w[bin/ test/ spec/ features/ .git .github appveyor Gemfile])
+        f.start_with?(*%w[bin/ test/ spec/ features/ .git .github appveyor Gemfile
+                          lib/specs/ CHECK_BUG.md]) ||
+        # Internal working notes and OS cruft are not part of the public gem.
+        # CHECK_BUG.md named a customer and their data volumes; lib/specs are
+        # internal design docs. Both shipped publicly through 0.8.2.
+        File.basename(f) == ".DS_Store"
     end
   end
   spec.bindir = "exe"
