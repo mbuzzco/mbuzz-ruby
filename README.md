@@ -193,16 +193,22 @@ use Mbuzz::Middleware::Tracking
 run MyApp
 ```
 
-## Full-page caching
+## Full-page caching — the snippet below is REQUIRED
 
-If pages are served from a full-page cache (Cloudflare, Varnish, nginx, Rack::Cache, a CDN),
-the cache answers the request **without entering the Rack stack**, so the tracking middleware
-never runs, no visitor cookie is set, and every later event is dropped for having no one to
-attribute it to. The page renders perfectly and nothing is logged — the failure is silent.
+**Add this to your layout or nothing is tracked.** Since 0.10.0 a page response never sets the
+visitor cookie: only `POST /_mbuzz/session` mints, and the snippet is what calls it.
 
-`Mbuzz::Middleware::SessionEndpoint` fixes this. It answers `POST /_mbuzz/session`, a path
-caches don't store, and the **server** sets the cookie on that response. Rails mounts it for
-you; Rack and Sinatra apps add it ahead of `Tracking` as shown above.
+A page response can be stored by a full-page cache (Cloudflare, Varnish, nginx, Rack::Cache, a
+CDN) and replayed to every visitor. A `Set-Cookie` sitting in that cache hands everyone the
+*first* visitor's id, so unrelated people merge into one journey — corruption rather than loss,
+since every row exists and is simply attributed to the wrong person. Minting only on a response
+no cache stores is the only way to prevent it.
+
+The same endpoint solves the original problem too: a cached page never enters the Rack stack,
+so the tracking middleware cannot run — but this one request always reaches it.
+
+`Mbuzz::Middleware::SessionEndpoint` answers `POST /_mbuzz/session`. Rails mounts it for you;
+Rack and Sinatra apps add it ahead of `Tracking` as shown above.
 
 Then call it once per page, from your layout:
 

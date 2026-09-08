@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-08
+
+### BREAKING — the page snippet is now required
+
+- **A page response no longer sets the visitor cookie.** Only `POST /_mbuzz/session` mints, and the inline snippet in the README's "Full-page caching" section is what calls it. **Upgrading without adding that snippet stops tracking entirely** — no cookie is ever minted, so no visitor exists and every event is dropped.
+
+### Fixed
+
+- **A cached page no longer hands every visitor the same id.** The page response carried a `Set-Cookie`, and a full-page cache stored it and replayed it to everyone — so unrelated people merged into a single journey. Corruption rather than loss: every row still exists, each attributed to the wrong person, and nothing looks missing. The page path now uses only the cookie the browser already holds; the uncached session endpoint is the sole place a visitor is minted.
+
+  Found by the cache harness at `sdk_integration_tests/scenarios/page_cache_test.rb`, and it could not have been found any other way: in isolation "reuse the cookie the browser presents" is correct — it is what lets a returning visitor keep their id. The bug exists only once a cache has handed one cookie to many people. The WordPress plugin reached the same conclusion first (`CookieBootstrap::CONTEXT_PAGE`).
+
 ## [0.9.0] - 2026-09-02
 
 ### Added

@@ -177,6 +177,9 @@ class CurrentAttributesTest < Minitest::Test
     Mbuzz.config.api_url = "https://test.mbuzz.co/api/v1"
   end
 
+  # Carries the visitor cookie the session endpoint established: the page path
+  # no longer mints, so a request without one is untracked by design and
+  # populates nothing in Current.
   def build_env
     {
       "REQUEST_METHOD" => "GET",
@@ -185,7 +188,8 @@ class CurrentAttributesTest < Minitest::Test
       "HTTP_USER_AGENT" => "Mozilla/5.0",
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
-      "rack.session" => {}
+      "rack.session" => {},
+      "HTTP_COOKIE" => "_mbuzz_vid=#{"a1b2c3d4" * 8}"
     }
   end
 

@@ -1,8 +1,11 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "securerandom"
 
 class Mbuzz::Middleware::TrackingTest < Minitest::Test
+  KNOWN_VISITOR = "a1b2c3d4" * 8
+
   def setup
     @original_config = Mbuzz.instance_variable_get(:@config)
     Mbuzz.instance_variable_set(:@config, nil)
@@ -45,20 +48,42 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     assert_nil Mbuzz::RequestContext.current
   end
 
-  def test_generates_visitor_id_when_missing
+  def test_never_sets_the_visitor_cookie_on_a_page
+    # A page response may be stored by a full-page cache and replayed to every
+    # visitor. A Set-Cookie in that cache hands everyone the same id and merges
+    # unrelated people into one journey. Only the session endpoint mints.
     _status, headers, _body = call_result
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
-    refute_nil cookie_header
-    assert_match(/_mbuzz_vid=/, cookie_header)
+    refute_match(/_mbuzz_vid=/, cookie_header)
   end
 
-  def test_preserves_existing_visitor_id
-    @existing_visitor_id = "existing123"
-    _status, headers, _body = call_result
+  def test_tracks_nothing_for_a_visitor_it_has_never_seen
+    @no_visitor_cookie = true
 
-    cookie_header = Array(headers["set-cookie"]).join("\n")
-    assert_match(/_mbuzz_vid=existing123/, cookie_header)
+    captured_visitor_id = :unset
+    @app = ->(env) {
+      captured_visitor_id = env["mbuzz.visitor_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    call_result
+    assert_nil captured_visitor_id, "no cookie means no visitor to attribute to"
+  end
+
+  def test_uses_the_visitor_id_the_browser_already_holds
+    @existing_visitor_id = "existing123"
+
+    captured_visitor_id = nil
+    @app = ->(env) {
+      captured_visitor_id = env["mbuzz.visitor_id"]
+      [200, {}, ["OK"]]
+    }
+    @middleware = Mbuzz::Middleware::Tracking.new(@app)
+
+    call_result
+    assert_equal "existing123", captured_visitor_id
   end
 
   def test_extracts_user_id_from_session
@@ -197,31 +222,32 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
 
   def test_generates_different_visitor_ids_for_different_requests_without_cookies
     # First request - no cookies, should generate new visitor_id
+    # The page path no longer mints, so the visitor arrives in the request's own
+    # cookie and is exposed on env. Two different browsers must stay separate.
     env1 = build_env_without_cookies
-    _status1, headers1, _body1 = @middleware.call(env1)
-    visitor_id_1 = extract_cookie_value(headers1, "_mbuzz_vid")
+    @middleware.call(env1)
+    visitor_id_1 = env1["mbuzz.visitor_id"]
 
-    # Second request - no cookies, should generate DIFFERENT visitor_id
     env2 = build_env_without_cookies
-    _status2, headers2, _body2 = @middleware.call(env2)
-    visitor_id_2 = extract_cookie_value(headers2, "_mbuzz_vid")
+    @middleware.call(env2)
+    visitor_id_2 = env2["mbuzz.visitor_id"]
 
-    refute_nil visitor_id_1, "First request should generate visitor_id"
-    refute_nil visitor_id_2, "Second request should generate visitor_id"
-    refute_equal visitor_id_1, visitor_id_2, "Different requests without cookies should get different visitor_ids"
+    refute_nil visitor_id_1, "First request should carry a visitor_id"
+    refute_nil visitor_id_2, "Second request should carry a visitor_id"
+    refute_equal visitor_id_1, visitor_id_2, "Two browsers must not share a visitor_id"
   end
 
   def test_visitor_id_from_cookie_not_leaked_to_next_request
     # First request WITH visitor cookie
     @existing_visitor_id = "user_a_visitor_id"
     env1 = build_env
-    _status1, headers1, _body1 = @middleware.call(env1)
-    visitor_id_1 = extract_cookie_value(headers1, "_mbuzz_vid")
+    @middleware.call(env1)
+    visitor_id_1 = env1["mbuzz.visitor_id"]
 
-    # Second request WITHOUT cookies (different user)
+    # Second request, a different browser with its own cookie
     env2 = build_env_without_cookies
-    _status2, headers2, _body2 = @middleware.call(env2)
-    visitor_id_2 = extract_cookie_value(headers2, "_mbuzz_vid")
+    @middleware.call(env2)
+    visitor_id_2 = env2["mbuzz.visitor_id"]
 
     assert_equal "user_a_visitor_id", visitor_id_1
     refute_equal "user_a_visitor_id", visitor_id_2, "User A's visitor_id should not leak to User B's request"
@@ -276,26 +302,22 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "Concurrent requests should get different visitor_ids, got: #{visitor_ids.inspect}"
   end
 
-  def test_concurrent_requests_set_correct_cookies
+  def test_concurrent_requests_never_cross_contaminate
+    # The page path sets no cookie now, so the invariant is that each request's
+    # env carries the visitor from ITS OWN cookie — never a neighbour's.
     results = Queue.new
 
     @app = ->(env) { [200, {}, ["OK"]] }
     @middleware = Mbuzz::Middleware::Tracking.new(@app)
 
-    # 10 concurrent requests
     threads = 10.times.map do |i|
       Thread.new do
         env = build_env_without_cookies.merge("HTTP_USER_AGENT" => "Browser#{i}")
-        _status, headers, _body = @middleware.call(env)
+        sent = env["HTTP_COOKIE"][/_mbuzz_vid=([^;]+)/, 1]
 
-        visitor_id_in_env = env["mbuzz.visitor_id"]
-        visitor_id_in_cookie = extract_cookie_value(headers, "_mbuzz_vid")
+        @middleware.call(env)
 
-        results << {
-          env_visitor_id: visitor_id_in_env,
-          cookie_visitor_id: visitor_id_in_cookie,
-          match: visitor_id_in_env == visitor_id_in_cookie
-        }
+        results << { sent: sent, seen: env["mbuzz.visitor_id"] }
       end
     end
 
@@ -304,18 +326,19 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
     all_results = []
     all_results << results.pop until results.empty?
 
-    mismatches = all_results.reject { |r| r[:match] }
+    mismatches = all_results.reject { |r| r[:sent] == r[:seen] }
     assert mismatches.empty?,
-      "All requests should have matching env and cookie visitor_ids. Mismatches: #{mismatches.inspect}"
+      "each request must see its own visitor. Mismatches: #{mismatches.inspect}"
 
-    # Verify all visitor_ids are unique
-    visitor_ids = all_results.map { |r| r[:env_visitor_id] }
-    assert_equal 10, visitor_ids.uniq.length,
-      "All 10 concurrent requests should get unique visitor_ids"
+    assert_equal 10, all_results.map { |r| r[:seen] }.uniq.length,
+      "10 concurrent browsers must remain 10 distinct visitors"
   end
 
   private
 
+  # Carries a DISTINCT visitor cookie each call: the page path no longer mints,
+  # so a request without one is untracked and exercises nothing — and the
+  # isolation tests need two different visitors to tell apart.
   def build_env_without_cookies
     {
       "REQUEST_METHOD" => "GET",
@@ -325,7 +348,8 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "HTTP_USER_AGENT" => "Mozilla/5.0",
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
-      "rack.session" => {}
+      "rack.session" => {},
+      "HTTP_COOKIE" => "_mbuzz_vid=#{SecureRandom.hex(32)}"
     }
   end
 
@@ -353,8 +377,14 @@ class Mbuzz::Middleware::TrackingTest < Minitest::Test
       "rack.session" => @session || {}
     }
 
+    # The page path no longer mints (a cached Set-Cookie would hand every
+    # visitor the same id), so the ordinary request carries the cookie the
+    # session endpoint already gave the browser. Set @no_visitor_cookie for the
+    # first-time-visitor case.
+    visitor_id = @existing_visitor_id || (KNOWN_VISITOR unless @no_visitor_cookie)
+
     cookies = []
-    cookies << "_mbuzz_vid=#{@existing_visitor_id}" if @existing_visitor_id
+    cookies << "_mbuzz_vid=#{visitor_id}" if visitor_id
     env["HTTP_COOKIE"] = cookies.join("; ") if cookies.any?
 
     env
@@ -672,6 +702,9 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
     }
   end
 
+  # Named for what it lacks: a session cookie. It carries the visitor cookie,
+  # because the page path no longer mints one and these tests are about session
+  # creation rather than minting.
   def build_env_without_cookies
     {
       "REQUEST_METHOD" => "GET",
@@ -681,7 +714,8 @@ class Mbuzz::Middleware::SessionCreationTest < Minitest::Test
       "HTTP_USER_AGENT" => "Mozilla/5.0",
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
-      "rack.session" => {}
+      "rack.session" => {},
+      "HTTP_COOKIE" => "_mbuzz_vid=#{"a1b2c3d4" * 8}"
     }.merge(navigation_headers)
   end
 
@@ -876,11 +910,13 @@ class Mbuzz::Middleware::NavigationDetectionTest < Minitest::Test
     refute session_created, "Turbo Frame request should not trigger session creation"
   end
 
-  def test_visitor_cookie_set_even_when_session_skipped
+  def test_sub_request_never_re_sets_the_visitor_cookie
+    # A sub-request response is as cacheable as any other, so it must carry no
+    # Set-Cookie either — it used to, which put one in the cache.
     _status, headers, _body = @middleware.call(build_turbo_frame_env)
 
     cookie_header = Array(headers["set-cookie"]).join("\n")
-    assert_match(/_mbuzz_vid=/, cookie_header, "Visitor cookie should always be set")
+    refute_match(/_mbuzz_vid=/, cookie_header)
   end
 
   def test_session_cookie_never_set
@@ -906,6 +942,8 @@ class Mbuzz::Middleware::NavigationDetectionTest < Minitest::Test
 
   private
 
+  # Carries the visitor cookie the session endpoint established: the page path
+  # no longer mints, so a request without one is untracked by design.
   def base_env
     {
       "REQUEST_METHOD" => "GET",
@@ -914,7 +952,8 @@ class Mbuzz::Middleware::NavigationDetectionTest < Minitest::Test
       "HTTP_USER_AGENT" => "Mozilla/5.0",
       "rack.url_scheme" => "https",
       "HTTP_HOST" => "example.com",
-      "rack.session" => {}
+      "rack.session" => {},
+      "HTTP_COOKIE" => "_mbuzz_vid=#{SecureRandom.hex(32)}"
     }
   end
 

@@ -15,6 +15,16 @@ module Mbuzz
         return @app.call(env) if skip_request?(env)
 
         request = Rack::Request.new(env)
+
+        # Only a visitor the browser already holds. This response may be stored
+        # by a full-page cache and replayed to everyone, so minting here would
+        # put a Set-Cookie in that cache and hand every later visitor the same
+        # id — unrelated people merged into one journey. Corruption, not loss:
+        # every row still exists, each attributed to the wrong person, and
+        # nothing looks missing. A first-time visitor is established a moment
+        # later by Middleware::SessionEndpoint, whose POST no cache stores.
+        return @app.call(env) unless visitor_id_from_cookie(request)
+
         context = build_request_context(request)
 
         env[ENV_VISITOR_ID_KEY] = context[:visitor_id]
@@ -26,9 +36,7 @@ module Mbuzz
         create_session_async(context, request) if should_create_session?(env)
 
         RequestContext.with_context(request: request) do
-          status, headers, body = @app.call(env)
-          set_visitor_cookie(headers, context, request)
-          [status, headers, body]
+          @app.call(env)
         ensure
           reset_current_attributes
         end
@@ -87,7 +95,7 @@ module Mbuzz
         user_agent = request.user_agent.to_s
 
         {
-          visitor_id: resolve_visitor_id(request),
+          visitor_id: visitor_id_from_cookie(request),
           session_id: SecureRandom.uuid,
           user_id: user_id_from_session(request),
           url: request.url,
@@ -96,10 +104,6 @@ module Mbuzz
           user_agent: user_agent,
           device_fingerprint: Digest::SHA256.hexdigest("#{ip}|#{user_agent}")[0, 32]
         }.freeze
-      end
-
-      def resolve_visitor_id(request)
-        visitor_id_from_cookie(request) || Visitor::Identifier.generate
       end
 
       def visitor_id_from_cookie(request)
@@ -137,33 +141,6 @@ module Mbuzz
         return unless defined?(Rails) && Rails.logger
 
         Rails.logger.error("[Mbuzz] #{message}")
-      end
-
-      # Cookie setting - visitor identity only (sessions are server-side)
-
-      def set_visitor_cookie(headers, context, request)
-        Rack::Utils.set_cookie_header!(
-          headers,
-          VISITOR_COOKIE_NAME,
-          visitor_cookie_options(context, request)
-        )
-      end
-
-      def visitor_cookie_options(context, request)
-        base_cookie_options(request).merge(
-          value: context[:visitor_id],
-          max_age: VISITOR_COOKIE_MAX_AGE
-        )
-      end
-
-      def base_cookie_options(request)
-        options = {
-          path: VISITOR_COOKIE_PATH,
-          httponly: true,
-          same_site: VISITOR_COOKIE_SAME_SITE
-        }
-        options[:secure] = true if request.ssl?
-        options
       end
 
       # Store context in CurrentAttributes for background job propagation
