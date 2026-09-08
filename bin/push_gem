@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Publish the gem. `gem push` is unusable on this account: it never sends the
+# API key from ~/.local/share/gem/credentials, falls through to the signin
+# endpoint RubyGems retired, and asks for an email and password that cannot
+# work. Its "Enter your RubyGems.org credentials" prompt reads as "you have no
+# credentials" — you do, and it is valid.
+#
+# This sends the key explicitly, which is the path that works.
+#
+# Usage:  bin/push_gem <6-digit-otp> [gemfile]
+set -euo pipefail
+
+OTP="${1:?usage: bin/push_gem <6-digit-otp> [gemfile]}"
+GEM="${2:-$(ls -t mbuzz-*.gem | head -1)}"
+
+KEY=$(ruby -ryaml -e 'puts YAML.load_file(File.expand_path("~/.local/share/gem/credentials"))[:rubygems_api_key]')
+
+echo "pushing ${GEM}..."
+curl -s -X POST https://rubygems.org/api/v1/gems \
+  -H "Authorization: ${KEY}" \
+  -H "OTP: ${OTP}" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary "@${GEM}"
+echo
+
+# The push output is not proof. The registry is.
+echo "registry now serves:"
+curl -s https://rubygems.org/api/v1/versions/mbuzz.json \
+  | ruby -rjson -e 'v = JSON.parse(STDIN.read).first; puts "  #{v["number"]}  #{v["created_at"]}"'
