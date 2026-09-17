@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-09-17
+
+### Fixed — the visitor's IP now reaches mbuzz on session create
+
+- **`POST /api/v1/sessions` now carries `ip`.** The middleware already extracted the visitor's
+  address — it is half of `device_fingerprint = SHA256(ip|user_agent)` — and then dropped it at
+  three points on the way out: `Client.session` had no `ip:` keyword, `SessionRequest#payload`
+  omitted it, and `Middleware::Tracking`'s own call site omitted it too. Events and conversions have
+  always sent one; only sessions did not.
+- **Why it matters.** mbuzz sends Meta's Conversions API `client_ip_address`, which Meta documents
+  as **required** for website events, and a session with no address means the events resolved
+  through it carry none either. Upgrading improves Event Match Quality for anyone using conversion
+  feedback; it changes nothing else.
+- **No API change.** `ip:` is an optional keyword on `Client.session` and both middlewares fill it
+  automatically. Existing callers need no edit.
+
+Found by the SDK integration harness rather than by unit tests: every layer was correct on its own,
+and only a real request through a real app could tell the visitor's address from the app server's.
+
 ## [0.10.0] - 2026-09-08
 
 ### BREAKING — the page snippet is now required

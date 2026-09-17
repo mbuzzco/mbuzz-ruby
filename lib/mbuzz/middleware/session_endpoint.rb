@@ -93,7 +93,8 @@ module Mbuzz
             url: context[:url],
             referrer: context[:referrer],
             device_fingerprint: context[:device_fingerprint],
-            user_agent: context[:user_agent]
+            user_agent: context[:user_agent],
+            ip: context[:ip]
           )
         rescue StandardError => e
           log_error("Session creation failed: #{e.message}") if Mbuzz.config.debug

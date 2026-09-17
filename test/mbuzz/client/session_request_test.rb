@@ -143,7 +143,52 @@ class Mbuzz::Client::SessionRequestTest < Minitest::Test
     end
   end
 
+  # The visitor's IP, which mbuzz needs for Meta's `client_ip_address` — Meta
+  # documents it as required for website events.
+  #
+  # It was computed by the middleware (it is half of
+  # `device_fingerprint = SHA256(ip|user_agent)`) and then DROPPED here until
+  # 2026-09-17: `Client.session` had no `ip:` keyword and this payload omitted
+  # it. Found by the SDK integration harness, not by a unit test, because every
+  # layer was correct on its own. These pin it so it cannot be dropped again.
+
+  def test_payload_includes_the_visitor_ip
+    payload = captured_payload(ip: "203.0.113.45")
+
+    assert_equal "203.0.113.45", payload[:session][:ip]
+  end
+
+  def test_payload_omits_ip_when_none_was_given
+    assert_nil captured_payload[:session][:ip]
+  end
+
+  def test_client_session_passes_the_ip_through
+    captured = nil
+    Mbuzz::Api.stub(:post_with_response, ->(_path, body) { captured = body; nil }) do
+      Mbuzz::Client.session(
+        visitor_id: "vis123", session_id: "sess123",
+        url: "https://example.com/", ip: "203.0.113.45"
+      )
+    end
+
+    assert_equal "203.0.113.45", captured[:session][:ip]
+  end
+
   private
+
+  # The body actually handed to Api.post_with_response. Asserting on the real
+  # posted body rather than on a private method is what makes these regression
+  # guards rather than restatements of the implementation.
+  def captured_payload(**overrides)
+    captured = nil
+    Mbuzz::Api.stub(:post_with_response, ->(_path, body) { captured = body; nil }) do
+      Mbuzz::Client::SessionRequest.new(
+        visitor_id: "vis123", session_id: "sess123",
+        url: "https://example.com/", **overrides
+      ).call
+    end
+    captured
+  end
 
   def build_request
     Mbuzz::Client::SessionRequest.new(

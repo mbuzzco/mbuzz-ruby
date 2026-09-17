@@ -12,7 +12,8 @@ module Mbuzz
       # Response values
       ACCEPTED_STATUS = "accepted"
 
-      def initialize(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil, user_agent: nil, started_at: nil)
+      def initialize(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil,
+                     user_agent: nil, started_at: nil, ip: nil)
         @visitor_id = visitor_id
         @session_id = session_id
         @url = url
@@ -20,6 +21,7 @@ module Mbuzz
         @device_fingerprint = device_fingerprint
         @user_agent = user_agent
         @started_at = started_at
+        @ip = ip
       end
 
       def call
@@ -32,7 +34,8 @@ module Mbuzz
 
       private
 
-      attr_reader :visitor_id, :session_id, :url, :referrer, :device_fingerprint, :user_agent, :started_at
+      attr_reader :visitor_id, :session_id, :url, :referrer, :device_fingerprint, :user_agent,
+        :started_at, :ip
 
       def valid?
         present?(visitor_id) && present?(session_id) && present?(url)
@@ -42,6 +45,11 @@ module Mbuzz
         @response ||= Api.post_with_response(SESSIONS_PATH, { session: payload })
       end
 
+      # `ip` is the visitor's address, which the middleware already extracted to
+      # compute `device_fingerprint` (SHA256(ip|user_agent)). It was computed
+      # and then dropped here until 2026-09-17: mbuzz needs it for Meta's
+      # `client_ip_address`, which Meta documents as required for website
+      # events, and the events/conversions payloads have always carried it.
       def payload
         {
           visitor_id: visitor_id,
@@ -50,6 +58,7 @@ module Mbuzz
           referrer: referrer,
           device_fingerprint: device_fingerprint,
           user_agent: user_agent,
+          ip: ip,
           started_at: started_at || Time.now.utc.iso8601
         }.compact
       end
