@@ -4,6 +4,7 @@ require_relative "mbuzz/version"
 require_relative "mbuzz/configuration"
 require_relative "mbuzz/dropped_call"
 require_relative "mbuzz/visitor/identifier"
+require_relative "mbuzz/fbp"
 require_relative "mbuzz/request_context"
 require_relative "mbuzz/api"
 require_relative "mbuzz/client"
@@ -28,6 +29,9 @@ module Mbuzz
   VISITOR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2 # 2 years
   VISITOR_COOKIE_PATH = "/"
   VISITOR_COOKIE_SAME_SITE = "Lax"
+
+  # Meta Pixel's browser id. Read only; see Mbuzz::Fbp.
+  FBP_COOKIE_NAME = "_fbp"
 
   # The one request a cached page always sends to the app. Kept off /api and
   # /assets so host-app routing and cache rules don't shadow it.

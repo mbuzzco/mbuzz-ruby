@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-14
+
+### Added
+
+- **Meta's `_fbp` is forwarded on the session call.** The SDK reads the `_fbp` cookie the customer's
+  Meta Pixel already set and sends it as `fbp` on the session payload, on both paths (the session
+  endpoint and the tracking middleware). Meta merges a server event with the browser Pixel's event on
+  `event_name` + `fbp` when the event IDs differ, so without it every server `Lead` counted as a
+  second one. Accepts Meta's `fb.<n>.<ts>.<random>` and the optional appendix its server-side
+  Parameter Builder adds (`...AQECAQIB`); anything else is dropped. Never written, never invented.
+  The key is omitted, not null, when the cookie is absent or malformed. No install change needed.
+
+### Fixed
+
+- **A session call made outside Rack/Rails failed silently.** `SessionRequest` called
+  `Time#iso8601` without `require "time"`; Rack and Rails load it, a plain script did not, and the
+  `NoMethodError` was rescued to `false`.
+
 ## [0.10.1] - 2026-09-17
 
 ### Fixed — the visitor's IP now reaches mbuzz on session create

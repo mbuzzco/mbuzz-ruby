@@ -33,7 +33,7 @@ module Mbuzz
     end
 
     def self.session(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil,
-                     user_agent: nil, started_at: nil, ip: nil)
+                     user_agent: nil, started_at: nil, ip: nil, fbp: nil)
       SessionRequest.new(
         visitor_id: visitor_id,
         session_id: session_id,
@@ -42,7 +42,8 @@ module Mbuzz
         device_fingerprint: device_fingerprint,
         user_agent: user_agent,
         started_at: started_at,
-        ip: ip
+        ip: ip,
+        fbp: fbp
       ).call
     end
   end

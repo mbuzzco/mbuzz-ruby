@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+# Time#iso8601 lives here, not in core. Rack and Rails load it; a plain script
+# did not, and the session call then failed silently (rescued to false).
+require "time"
+
 module Mbuzz
   class Client
     class SessionRequest
@@ -13,7 +17,7 @@ module Mbuzz
       ACCEPTED_STATUS = "accepted"
 
       def initialize(visitor_id:, session_id:, url:, referrer: nil, device_fingerprint: nil,
-                     user_agent: nil, started_at: nil, ip: nil)
+                     user_agent: nil, started_at: nil, ip: nil, fbp: nil)
         @visitor_id = visitor_id
         @session_id = session_id
         @url = url
@@ -22,6 +26,7 @@ module Mbuzz
         @user_agent = user_agent
         @started_at = started_at
         @ip = ip
+        @fbp = fbp
       end
 
       def call
@@ -35,7 +40,7 @@ module Mbuzz
       private
 
       attr_reader :visitor_id, :session_id, :url, :referrer, :device_fingerprint, :user_agent,
-        :started_at, :ip
+        :started_at, :ip, :fbp
 
       def valid?
         present?(visitor_id) && present?(session_id) && present?(url)
@@ -59,6 +64,9 @@ module Mbuzz
           device_fingerprint: device_fingerprint,
           user_agent: user_agent,
           ip: ip,
+          # Meta's browser id, already format-checked by Mbuzz::Fbp. Dropped by
+          # .compact when absent: omitted, not null.
+          fbp: fbp,
           started_at: started_at || Time.now.utc.iso8601
         }.compact
       end

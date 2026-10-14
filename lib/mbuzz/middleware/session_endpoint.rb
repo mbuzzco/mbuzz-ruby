@@ -67,6 +67,7 @@ module Mbuzz
           referrer: payload["referrer"],
           ip: ip,
           user_agent: user_agent,
+          fbp: Fbp.read(request.cookies[FBP_COOKIE_NAME]),
           device_fingerprint: Digest::SHA256.hexdigest("#{ip}|#{user_agent}")[0, 32]
         }.freeze
       end
@@ -94,7 +95,8 @@ module Mbuzz
             referrer: context[:referrer],
             device_fingerprint: context[:device_fingerprint],
             user_agent: context[:user_agent],
-            ip: context[:ip]
+            ip: context[:ip],
+            fbp: context[:fbp]
           )
         rescue StandardError => e
           log_error("Session creation failed: #{e.message}") if Mbuzz.config.debug
