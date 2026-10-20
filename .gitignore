@@ -8,3 +8,5 @@
 /tmp/
 *.gem
 CHECK_BUG.md
+
+.DS_Store
