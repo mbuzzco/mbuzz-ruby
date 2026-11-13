@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`api_url:` option for data-resident installs.** `init()` accepts it again (removed in 0.8.2 so a live install could not be redirected). Explicit opt-in: `https://` only; a region key (`sk_live_au_...`) must be paired with it and it with a region key, otherwise `init()` throws; there is no fallback host, so a failed request is dropped, never retried against `api.mbuzz.co`. Installs that do not set it behave exactly as before. `Mbuzz.init` now validates it; previously `config.api_url` was an unchecked accessor, which still exists but is not validated when assigned directly.
+
 ## [0.11.0] - 2026-10-14
 
 ### Added

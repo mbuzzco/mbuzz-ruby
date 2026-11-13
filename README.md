@@ -240,7 +240,7 @@ is what preserves its full two-year life — a cookie written by `document.cooki
 ```ruby
 Mbuzz.init(
   api_key: "sk_live_...",             # Required - from mbuzz.co dashboard
-  api_url: "https://api.mbuzz.co/api/v1", # Optional - API endpoint
+  api_url: nil,                       # Optional - data-resident installs only: https host for a region key (sk_live_au_...); a region key requires it and vice versa
   debug: false                        # Optional - enable debug logging
 )
 ```

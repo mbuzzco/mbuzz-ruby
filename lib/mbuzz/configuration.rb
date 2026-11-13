@@ -26,7 +26,7 @@ module Mbuzz
     ].freeze
 
     def initialize
-      @api_url = "https://api.mbuzz.co/api/v1"
+      @api_url = DEFAULT_API_URL
       @enabled = true
       @debug = false
       @timeout = 5
@@ -34,6 +34,26 @@ module Mbuzz
       @flush_interval = 30
       @skip_paths = []
       @skip_extensions = []
+    end
+
+    DEFAULT_API_URL = "https://api.mbuzz.co/api/v1"
+    REGION_KEY = /\Ask_[a-z]+_[a-z]{2}_/
+
+    # api_url is an explicit opt-in for data-resident installs (spec M9). https
+    # only; no api_url means api.mbuzz.co, always; a region key (sk_live_au_...)
+    # must be paired with api_url and api_url with a region key; test keys are
+    # exempt from the pairing. There is no fallback host: a failed request is
+    # dropped, never retried against api.mbuzz.co.
+    def self.resolve_api_url(api_key, api_url)
+      has_url = !api_url.to_s.empty?
+      raise ConfigurationError, "api_url must start with https://" if has_url && !api_url.start_with?("https://")
+
+      unless api_key.to_s.start_with?("sk_test_") || has_url == REGION_KEY.match?(api_key.to_s)
+        raise ConfigurationError, "api_url and the API key region must be set together: " \
+          "a region key needs api_url, and api_url needs a region key"
+      end
+
+      (has_url ? api_url : DEFAULT_API_URL).chomp("/")
     end
 
     def validate!

@@ -56,8 +56,11 @@ module Mbuzz
   # @param debug [Boolean, nil] Enable debug logging
   # @param skip_paths [Array<String>, nil] Additional paths to skip tracking (e.g., ["/admin", "/internal"])
   # @param skip_extensions [Array<String>, nil] Additional extensions to skip (e.g., [".pdf"])
-  def self.init(api_key:, session_timeout: nil, debug: nil, skip_paths: nil, skip_extensions: nil)
-    config.api_key = api_key
+  def self.init(api_key:, api_url: nil, session_timeout: nil, debug: nil, skip_paths: nil, skip_extensions: nil)
+    Configuration.resolve_api_url(api_key, api_url).then do |resolved_url|
+      config.api_key = api_key
+      config.api_url = resolved_url
+    end
     config.session_timeout = session_timeout if session_timeout
     config.debug = debug unless debug.nil?
     config.skip_paths = skip_paths if skip_paths
